@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+jobs.db
+tmp_report.txt
+daily-report-*.md
+digest_report.md
