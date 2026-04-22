@@ -1,6 +1,7 @@
 __pycache__/
 *.pyc
-jobs.db
+*.db-shm
+*.db-wal
 tmp_report.txt
 daily-report-*.md
 digest_report.md
