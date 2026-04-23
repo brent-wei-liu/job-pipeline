@@ -2,6 +2,9 @@ __pycache__/
 *.pyc
 *.db-shm
 *.db-wal
+.fuse_hidden*
+data/.fuse_hidden*
+data/fetch.log
 tmp_report.txt
 daily-report-*.md
 digest_report.md
