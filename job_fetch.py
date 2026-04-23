@@ -1,9 +1,16 @@
 #!/usr/bin/env python3
 """Job Pipeline — Fetch: LinkedIn search → SQLite + Notion."""
-import re, json, sys, time, random, argparse, requests
+import re, json, sys, time, random, argparse, logging, requests
 from pathlib import Path
 from urllib.parse import quote
 from html import unescape
+
+logging.basicConfig(
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%H:%M:%S",
+    level=logging.INFO,
+)
+log = logging.getLogger("job_fetch")
 
 sys.path.insert(0, str(Path(__file__).parent))
 from db import get_conn, job_exists, job_duplicate, insert_job, insert_search_run
@@ -178,7 +185,10 @@ def run(args):
     seen = set()
     accepted_jobs = []
 
-    for q in ROLE_QUERIES:
+    log.info("Starting fetch run (max_accept=%s)", args.max_accept or "unlimited")
+
+    for qi, q in enumerate(ROLE_QUERIES, 1):
+        log.info("── Query %d/%d: \"%s\" ──", qi, len(ROLE_QUERIES), q)
         query_accepted = 0
         query_rejected = 0
         query_results = 0
@@ -198,6 +208,7 @@ def run(args):
             try:
                 html = requests.get(url, headers={"User-Agent": UA}, timeout=25).text
             except Exception as e:
+                log.error("Search failed: %s (page %d)", e, page)
                 summary["failures"].append({"stage": "search", "query": q, "page": page, "error": str(e)})
                 break
 
@@ -209,6 +220,7 @@ def run(args):
 
         query_results = len(all_cards)
         summary["searched"] += len(all_cards)
+        log.info("  Found %d cards", query_results)
 
         for j in all_cards:
             if j["id"] in seen:
@@ -224,6 +236,7 @@ def run(args):
                     summary["skipped_dup"] += 1
                     continue
                 # No JD yet (was 403'd last time) → will retry JD fetch below
+                log.info("  ↻ %s / %s — backfilling JD", j["company"], j["position"])
                 needs_jd_backfill = True
                 existing_db_id = existing[0]
             else:
@@ -234,6 +247,7 @@ def run(args):
             if not needs_jd_backfill:
                 title_reason = reject_by_title(j["position"])
                 if title_reason:
+                    log.info("  ✗ %s / %s — rejected (%s)", j["company"], j["position"], title_reason)
                     insert_job(conn, j["id"], j["company"], j["position"], j["url"],
                                jd_text="", status="rejected", reject_reason=title_reason)
                     summary["rejected"] += 1
@@ -249,6 +263,7 @@ def run(args):
                     headers={"User-Agent": UA}, timeout=25
                 )
                 if resp.status_code == 403:
+                    log.warning("  ⚠ %s / %s — JD fetch 403 blocked", j["company"], j["position"])
                     summary["failures"].append({"stage": "jd_fetch", "job_id": j["id"], "error": "403 blocked"})
                     if not needs_jd_backfill:
                         # New job, save without JD
@@ -285,6 +300,7 @@ def run(args):
 
             if reason:
                 # Store rejected job in SQLite too
+                log.info("  ✗ %s / %s — rejected (%s)", j["company"], j["position"], reason)
                 insert_job(conn, j["id"], j["company"], j["position"], j["url"],
                            jd_text=jd_text, status="rejected", reject_reason=reason)
                 summary["rejected"] += 1
@@ -293,6 +309,7 @@ def run(args):
                 continue
 
             # Store in SQLite
+            log.info("  ✓ %s / %s — accepted", j["company"], j["position"])
             insert_job(conn, j["id"], j["company"], j["position"], j["url"],
                        jd_text=jd_text, status="accepted")
             accepted_jobs.append(j)
@@ -302,6 +319,7 @@ def run(args):
             if args.max_accept > 0 and len(accepted_jobs) >= args.max_accept:
                 break
 
+        log.info("  Result: +%d accepted, +%d rejected, %d skipped", query_accepted, query_rejected, query_results - query_accepted - query_rejected)
         insert_search_run(conn, q, query_results, query_accepted, query_rejected)
         summary["queries"].append(q)
 
@@ -310,6 +328,8 @@ def run(args):
         time.sleep(1)
 
     conn.close()
+    log.info("Done: %d searched, %d accepted, %d rejected, %d skipped",
+             summary["searched"], summary["accepted"], summary["rejected"], summary["skipped_dup"])
     print(json.dumps(summary, indent=2, ensure_ascii=False))
 
 

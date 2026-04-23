@@ -49,7 +49,7 @@ def cmd_query(args):
             "fetched_at": jd["fetched_at"],
         }
 
-        # Use cached match score if available (no LLM calls)
+        # Use cached match score if available
         if jd.get("jd_text"):
             cached = get_match_score(conn, jd["id"])
             if cached:
@@ -58,6 +58,11 @@ def cmd_query(args):
                 job_entry["match_reasons"] = cached["match_reasons"]
                 job_entry["gaps"] = cached["gaps"]
                 job_entry["match_summary"] = cached["summary"]
+            else:
+                # Unscored: include JD text (truncated) + job ID for agent to score
+                job_entry["needs_scoring"] = True
+                job_entry["job_id"] = jd["id"]
+                job_entry["jd_text"] = jd["jd_text"][:3000]
 
         accepted_jobs.append(job_entry)
 
@@ -68,6 +73,7 @@ def cmd_query(args):
         "period_days": days,
         "accepted_count": len(accepted),
         "rejected_count": len(rejected),
+        "resume_text": resume_text[:3000] if resume_text else "",
         "accepted_jobs": accepted_jobs,
         "rejected_jobs": [
             {
@@ -139,11 +145,29 @@ if __name__ == "__main__":
     sv = sub.add_parser("save-summary", help="Save digest summary to DB")
     sv.add_argument("date", nargs="?", default=None, help="Date (YYYY-MM-DD), defaults to today")
 
+    sc = sub.add_parser("save-score", help="Save match score for a job (JSON from stdin)")
+
     args = ap.parse_args()
     if args.cmd == "query":
         cmd_query(args)
     elif args.cmd == "stats":
         cmd_stats(args)
+    elif args.cmd == "save-score":
+        from db import get_conn, save_match_score
+        import sys
+        data = json.loads(sys.stdin.read())
+        conn = get_conn()
+        for item in (data if isinstance(data, list) else [data]):
+            save_match_score(
+                conn, item["job_id"],
+                score=item["score"],
+                summary=item.get("summary", ""),
+                match_reasons=item.get("match_reasons"),
+                gaps=item.get("gaps"),
+                agentic_ai_relevant=item.get("agentic_ai_relevant", False),
+            )
+            print(f"Saved score {item['score']} for job {item['job_id']}")
+        conn.close()
     elif args.cmd == "save-summary":
         from db import get_conn, save_summary
         import sys

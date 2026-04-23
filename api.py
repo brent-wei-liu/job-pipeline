@@ -58,7 +58,7 @@ def list_jobs(
         sql += " AND (company LIKE ? OR position LIKE ?)"
         params.extend([f"%{search}%", f"%{search}%"])
 
-    allowed_sorts = {"fetched_at", "company", "position", "status", "starred"}
+    allowed_sorts = {"fetched_at", "company", "position", "status", "starred", "match_score"}
     if sort not in allowed_sorts:
         sort = "fetched_at"
     order_dir = "DESC" if order.lower() == "desc" else "ASC"
