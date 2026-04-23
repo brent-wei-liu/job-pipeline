@@ -19,7 +19,7 @@ Scheduled daily at 10:30 AM PT, after Fetch (10:00) and before Digest (11:00). C
 
 ### Step 1: Load the resume
 
-Read the resume from `data/resume.md` in the job-pipeline project directory. This is the primary resume file. If it doesn't exist, fall back to `data/resume_text.txt`.
+Read the resume from `data/resume.md` in the job-pipeline project directory. 
 
 ### Step 2: Query unscored jobs
 
