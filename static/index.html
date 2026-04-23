@@ -104,7 +104,7 @@
     transition: all 0.2s;
   }
 
-  .nav button:hover {
+  .nav button:hover, .nav button:active {
     color: var(--cyan);
     background: rgba(0,255,242,0.05);
   }
@@ -195,7 +195,7 @@
     white-space: nowrap;
   }
 
-  th:hover { background: rgba(0,255,242,0.12); }
+  th:hover, th:active { background: rgba(0,255,242,0.12); }
 
   td {
     padding: 10px 12px;
@@ -226,7 +226,7 @@
     cursor: pointer;
     transition: transform 0.2s;
   }
-  .score-cell:hover { transform: scale(1.2); }
+  .score-cell:hover, .score-cell:active { transform: scale(1.2); }
   .score-high { color: var(--green); text-shadow: 0 0 10px rgba(57,255,20,0.5); }
   .score-mid { color: var(--amber); text-shadow: 0 0 10px rgba(255,191,0,0.5); }
   .score-low { color: var(--red); text-shadow: 0 0 10px rgba(255,51,51,0.5); }
@@ -251,7 +251,7 @@
     padding: 2px;
     transition: transform 0.2s;
   }
-  .star-btn:hover { transform: scale(1.3); }
+  .star-btn:hover, .star-btn:active { transform: scale(1.3); }
 
   /* Action buttons */
   .action-btn {
@@ -265,12 +265,12 @@
     letter-spacing: 1px;
     transition: all 0.2s;
   }
-  .action-btn:hover {
+  .action-btn:hover, .action-btn:active {
     border-color: var(--cyan);
     color: var(--cyan);
     box-shadow: 0 0 8px rgba(0,255,242,0.2);
   }
-  .action-btn.danger:hover {
+  .action-btn.danger:hover, .action-btn.danger:active {
     border-color: var(--red);
     color: var(--red);
     box-shadow: 0 0 8px rgba(255,51,51,0.2);
@@ -290,6 +290,16 @@
     color: #999;
   }
   .jd-panel.open { display: block; }
+
+  /* Sub-row: hidden on desktop, shown on mobile */
+  .sub-row { display: none; }
+  .sub-inner {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+  .sub-date { color: #666; font-size: 0.85em; }
 
   /* Notes inline edit */
   .notes-input {
@@ -393,7 +403,7 @@
     align-items: center;
   }
 
-  .digest-header:hover { background: rgba(0,255,242,0.04); }
+  .digest-header:hover, .digest-header:active { background: rgba(0,255,242,0.04); }
 
   .digest-date {
     color: var(--cyan);
@@ -455,7 +465,7 @@
     text-decoration: none;
     transition: text-shadow 0.2s;
   }
-  a:hover {
+  a:hover, a:active {
     text-shadow: 0 0 10px var(--magenta);
   }
 
@@ -479,12 +489,57 @@
 
   /* Responsive */
   @media (max-width: 768px) {
-    .header { padding: 12px 16px; }
+    /* Header: stack title + clock vertically */
+    .header { padding: 12px 16px; flex-direction: column; align-items: flex-start; gap: 4px; }
     .header h1 { font-size: 1em; }
+    .header .clock { font-size: 0.8em; }
+
     .content { padding: 12px 16px; }
+    .nav { flex-wrap: wrap; padding: 0 16px; }
     .nav button { padding: 10px 14px; font-size: 0.75em; }
     .stats-panel { grid-template-columns: 1fr; }
-    .nav { flex-wrap: wrap; }
+
+    /* Touch targets */
+    .action-btn { padding: 8px 14px; min-height: 36px; }
+    .star-btn { padding: 8px; font-size: 1.4em; }
+
+    /* Controls: stack vertically, full width */
+    .controls { flex-direction: column; gap: 8px; }
+    .controls input, .controls select { width: 100%; box-sizing: border-box; }
+
+    /* Run card: stack vertically */
+    .run-card { flex-direction: column; gap: 8px; align-items: flex-start; }
+    .run-card .nums { display: flex; flex-wrap: wrap; gap: 8px; }
+    .run-card .nums span { margin-left: 0; }
+
+    /* Table: hide STATUS / NOTES / DATE columns from primary row */
+    .table-wrap th:nth-child(5),
+    .table-wrap th:nth-child(6),
+    .table-wrap th:nth-child(7),
+    .table-wrap td:nth-child(5),
+    .table-wrap td:nth-child(6),
+    .table-wrap td:nth-child(7) { display: none; }
+
+    /* Fix remaining column layout */
+    .table-wrap table { table-layout: fixed; }
+    .table-wrap th:nth-child(1) { width: 36px; }
+    .table-wrap th:nth-child(4) { width: 48px; }
+    .table-wrap th:nth-child(8) { width: 84px; }
+    .position { max-width: none; white-space: normal; word-break: break-word; }
+    .company { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* Primary job row: no bottom border (merges visually with sub-row) */
+    .job-row td { border-bottom: none; }
+
+    /* Sub-row: show with retro indent styling */
+    .sub-row { display: table-row; }
+    .sub-row > td {
+      padding: 4px 12px 10px 48px;
+      border-top: 1px dashed rgba(0,255,242,0.1);
+      border-bottom: 1px solid rgba(0,255,242,0.08);
+      background: rgba(0,0,0,0.2);
+    }
+    .sub-row .notes-input { margin-top: 4px; width: 100%; }
   }
 </style>
 </head>
@@ -506,7 +561,7 @@
   <!-- JOBS TAB -->
   <div id="tab-jobs">
     <div class="controls">
-      <input type="text" id="search" placeholder="SEARCH COMPANY / POSITION..." style="width:280px" oninput="debounceLoad()">
+      <input type="text" id="search" placeholder="SEARCH COMPANY / POSITION..." style="width:280px;max-width:100%" oninput="debounceLoad()">
       <select id="filter-status" onchange="loadJobs()">
         <option value="">ALL STATUS</option>
         <option value="accepted">ACCEPTED</option>
@@ -683,7 +738,7 @@ function renderMatchDetail(j) {
 function renderJobs(jobs) {
   const tbody = document.getElementById('jobs-body');
   tbody.innerHTML = jobs.map(j => `
-    <tr id="row-${j.id}">
+    <tr class="job-row" id="row-${j.id}">
       <td>
         <button class="star-btn" onclick="toggleStar(${j.id})">
           ${j.starred ? '<span class="badge-starred">★</span>' : '<span style="color:#333">☆</span>'}
@@ -711,6 +766,18 @@ function renderJobs(jobs) {
       <td>
         <button class="action-btn" onclick="toggleJD(${j.id})">JD</button>
         <button class="action-btn danger" onclick="deleteJob(${j.id})">DEL</button>
+      </td>
+    </tr>
+    <tr class="sub-row" id="sub-${j.id}">
+      <td colspan="8">
+        <div class="sub-inner">
+          <span class="badge badge-${j.status}">${j.status}</span>
+          <span class="sub-date">${formatDate(j.fetched_at)}</span>
+        </div>
+        <input class="notes-input" value="${esc(j.notes || '')}"
+               placeholder="add note..."
+               onblur="saveNotes(${j.id}, this.value)"
+               onkeydown="if(event.key==='Enter')this.blur()">
       </td>
     </tr>
     <tr id="match-row-${j.id}" style="display:none">
