@@ -1,5 +1,6 @@
 __pycache__/
 *.pyc
+data/jobs.db
 *.db-shm
 *.db-wal
 .fuse_hidden*
