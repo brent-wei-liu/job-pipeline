@@ -30,7 +30,8 @@ def _init_tables(conn):
         starred         INTEGER NOT NULL DEFAULT 0,         -- 0 or 1
         notes           TEXT DEFAULT '',                    -- user notes (已投、面试中 etc.)
         applied_at      TEXT DEFAULT NULL,                  -- datetime when applied
-        fetched_at      TEXT NOT NULL DEFAULT (datetime('now'))
+        fetched_at      TEXT NOT NULL DEFAULT (datetime('now')),
+        source          TEXT NOT NULL DEFAULT 'linkedin'
     );
 
     CREATE TABLE IF NOT EXISTS search_runs (
@@ -62,6 +63,7 @@ def _init_tables(conn):
         ("match_gaps", "TEXT DEFAULT NULL"),           # JSON array
         ("agentic_ai_relevant", "INTEGER DEFAULT NULL"),  # 0/1
         ("scored_at", "TEXT DEFAULT NULL"),
+        ("source", "TEXT NOT NULL DEFAULT 'linkedin'"),
     ]:
         if col not in cols:
             conn.execute(f"ALTER TABLE jobs ADD COLUMN {col} {typedef}")
@@ -95,12 +97,12 @@ def job_duplicate(conn, company, position, jd_text=""):
 
 
 def insert_job(conn, linkedin_id, company, position, url, jd_text="",
-               status="accepted", reject_reason=None, notion_page_id=None):
+               status="accepted", reject_reason=None, notion_page_id=None, source="linkedin"):
     conn.execute("""
         INSERT OR IGNORE INTO jobs
-            (linkedin_id, company, position, url, jd_text, status, reject_reason, notion_page_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, (linkedin_id, company, position, url, jd_text, status, reject_reason, notion_page_id))
+            (linkedin_id, company, position, url, jd_text, status, reject_reason, notion_page_id, source)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (linkedin_id, company, position, url, jd_text, status, reject_reason, notion_page_id, source))
     conn.commit()
 
 

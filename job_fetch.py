@@ -249,7 +249,7 @@ def run(args):
                 if title_reason:
                     log.info("  ✗ %s / %s — rejected (%s)", j["company"], j["position"], title_reason)
                     insert_job(conn, j["id"], j["company"], j["position"], j["url"],
-                               jd_text="", status="rejected", reject_reason=title_reason)
+                               jd_text="", status="rejected", reject_reason=title_reason, source="linkedin")
                     summary["rejected"] += 1
                     query_rejected += 1
                     summary["rejected_by_reason"][title_reason] = summary["rejected_by_reason"].get(title_reason, 0) + 1
@@ -268,7 +268,7 @@ def run(args):
                     if not needs_jd_backfill:
                         # New job, save without JD
                         insert_job(conn, j["id"], j["company"], j["position"], j["url"],
-                                   jd_text="", status="accepted")
+                                   jd_text="", status="accepted", source="linkedin")
                         accepted_jobs.append(j)
                         summary["accepted"] += 1
                         query_accepted += 1
@@ -302,7 +302,7 @@ def run(args):
                 # Store rejected job in SQLite too
                 log.info("  ✗ %s / %s — rejected (%s)", j["company"], j["position"], reason)
                 insert_job(conn, j["id"], j["company"], j["position"], j["url"],
-                           jd_text=jd_text, status="rejected", reject_reason=reason)
+                           jd_text=jd_text, status="rejected", reject_reason=reason, source="linkedin")
                 summary["rejected"] += 1
                 query_rejected += 1
                 summary["rejected_by_reason"][reason] = summary["rejected_by_reason"].get(reason, 0) + 1
@@ -311,7 +311,7 @@ def run(args):
             # Store in SQLite
             log.info("  ✓ %s / %s — accepted", j["company"], j["position"])
             insert_job(conn, j["id"], j["company"], j["position"], j["url"],
-                       jd_text=jd_text, status="accepted")
+                       jd_text=jd_text, status="accepted", source="linkedin")
             accepted_jobs.append(j)
             summary["accepted"] += 1
             query_accepted += 1

@@ -41,6 +41,7 @@ def list_jobs(
     status: Optional[str] = Query(None),
     starred: Optional[int] = Query(None),
     search: Optional[str] = Query(None),
+    source: Optional[str] = Query(None),
     sort: str = Query("fetched_at"),
     order: str = Query("desc"),
 ):
@@ -57,6 +58,9 @@ def list_jobs(
     if search:
         sql += " AND (company LIKE ? OR position LIKE ?)"
         params.extend([f"%{search}%", f"%{search}%"])
+    if source:
+        sql += " AND source = ?"
+        params.append(source)
 
     allowed_sorts = {"fetched_at", "company", "position", "status", "starred", "match_score"}
     if sort not in allowed_sorts:
@@ -141,6 +145,14 @@ def toggle_star(job_id: int):
 
 
 # ── Search Runs API ─────────────────────────────────────────────────────
+@app.get("/api/sources")
+def list_sources():
+    conn = get_conn()
+    rows = conn.execute("SELECT DISTINCT source FROM jobs ORDER BY source").fetchall()
+    conn.close()
+    return {"sources": [r["source"] for r in rows]}
+
+
 @app.get("/api/search-runs")
 def list_search_runs(days: int = Query(30, ge=1, le=365)):
     conn = get_conn()

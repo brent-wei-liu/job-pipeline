@@ -614,6 +614,10 @@
         <option value="90">90 DAYS</option>
         <option value="365">ALL TIME</option>
       </select>
+      <select id="filter-source" onchange="loadJobs()">
+        <option value="">ALL SOURCES</option>
+        <option value="linkedin">LINKEDIN</option>
+      </select>
     </div>
 
     <div class="table-wrap">
@@ -734,6 +738,8 @@ async function loadJobs() {
   if (status) params.set('status', status);
   if (starred) params.set('starred', starred);
   if (search) params.set('search', search);
+  const source = document.getElementById('filter-source').value;
+  if (source) params.set('source', source);
 
   const res = await fetch('/api/jobs?' + params);
   const data = await res.json();
