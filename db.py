@@ -53,6 +53,16 @@ def _init_tables(conn):
         content     TEXT NOT NULL,
         created_at  TEXT NOT NULL DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS watchlist (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        company     TEXT NOT NULL UNIQUE,
+        ats_type    TEXT NOT NULL,
+        ats_slug    TEXT,
+        enabled     INTEGER NOT NULL DEFAULT 1,
+        keywords    TEXT DEFAULT NULL,
+        last_run_at TEXT DEFAULT NULL
+    );
     """)
     # Migration: add match score columns if missing
     cols = {r[1] for r in conn.execute("PRAGMA table_info(jobs)").fetchall()}
@@ -68,6 +78,7 @@ def _init_tables(conn):
         if col not in cols:
             conn.execute(f"ALTER TABLE jobs ADD COLUMN {col} {typedef}")
     conn.commit()
+    _seed_watchlist(conn)
 
 
 def job_exists(conn, linkedin_id):
@@ -217,3 +228,55 @@ def get_recent_summaries(conn, limit=10):
         "SELECT * FROM summaries ORDER BY date DESC LIMIT ?",
         (limit,)
     ).fetchall()
+
+
+_WATCHLIST_SEED = [
+    # (company, ats_type, ats_slug, enabled)
+    # ── Greenhouse (enabled) ──────────────────────────────────────────────
+    ("Anthropic",             "greenhouse", "anthropic",             1),
+    ("xAI",                   "greenhouse", "xai",                   1),
+    ("Scale AI",              "greenhouse", "scaleai",               1),
+    ("Together AI",           "greenhouse", "togetherai",            1),
+    ("Fireworks AI",          "greenhouse", "fireworksai",           1),
+    ("Figure",                "greenhouse", "figureai",              1),
+    ("Databricks",            "greenhouse", "databricks",            1),
+    ("Waymo",                 "greenhouse", "waymo",                 1),
+    ("Cruise",                "greenhouse", "getcruise",             0),  # slug needs verification
+    # ── Ashby (enabled) ──────────────────────────────────────────────────
+    ("OpenAI",                "ashby",      "openai",                1),
+    ("Cohere",                "ashby",      "cohere",                1),
+    ("Modal",                 "ashby",      "modal",                 1),
+    ("Physical Intelligence", "ashby",      "physicalintelligence",  1),
+    # ── Lever (enabled) ──────────────────────────────────────────────────
+    ("Mistral",               "lever",      "mistral",               1),
+    # ── Workable (not yet implemented) ───────────────────────────────────
+    ("Hugging Face",          "workable",   "huggingface",           0),
+    # ── Workday (unofficial API, not yet implemented) ─────────────────────
+    ("Broadcom",              "workday",    "broadcom.wd1",          0),
+    ("NVIDIA",                "workday",    "nvidia.wd5",            0),
+    ("Micron",                "workday",    "micron.wd1",            0),
+    ("Marvell",               "workday",    "marvell.wd1",           0),
+    ("Cadence",               "workday",    "cadence.wd1",           0),
+    ("Snowflake",             "workday",    None,                    0),
+    # ── Custom / other ATS (no public API) ───────────────────────────────
+    ("SanDisk",               "smartrecruiters", "sandisk",          0),
+    ("AMD",                   "icims",      "amd",                   0),
+    ("Qualcomm",              "eightfold",  "qualcomm",              0),
+    ("Synopsys",              "avature",    "synopsys",              0),
+    ("ARM",                   "seamlesshiring", "arm",               0),
+    ("Amazon",                "custom",     "amazon",                0),
+    ("Microsoft",             "custom",     "microsoft",             0),
+    ("Google",                "custom",     "google",                0),
+    ("Meta",                  "custom",     "meta",                  0),
+    ("Apple",                 "custom",     "apple",                 0),
+    ("Tesla",                 "custom",     "tesla",                 0),
+]
+
+
+def _seed_watchlist(conn):
+    for company, ats_type, ats_slug, enabled in _WATCHLIST_SEED:
+        conn.execute(
+            "INSERT OR IGNORE INTO watchlist (company, ats_type, ats_slug, enabled) VALUES (?, ?, ?, ?)",
+            (company, ats_type, ats_slug, enabled),
+        )
+    conn.commit()
