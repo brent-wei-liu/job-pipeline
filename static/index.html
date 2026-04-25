@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>🦀 JOB PIPELINE // TERMINAL</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700&display=swap');
 
@@ -412,17 +413,28 @@
   }
 
   .digest-content {
-    padding: 16px;
+    padding: 16px 20px;
     background: rgba(0,0,0,0.3);
     border-top: 1px solid var(--border);
-    white-space: pre-wrap;
-    word-break: break-word;
     font-size: 0.85em;
-    line-height: 1.5;
-    color: #aaa;
-    max-height: 600px;
+    line-height: 1.6;
+    color: #bbb;
+    max-height: 700px;
     overflow-y: auto;
   }
+  .digest-content h1 { color: var(--cyan); font-family: 'Orbitron', sans-serif; font-size: 1.2em; margin: 16px 0 8px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+  .digest-content h2 { color: var(--amber); font-size: 1.05em; margin: 18px 0 8px; }
+  .digest-content h3 { color: var(--green); font-size: 0.95em; margin: 12px 0 6px; }
+  .digest-content p { margin: 6px 0; }
+  .digest-content strong { color: #ddd; }
+  .digest-content a { color: var(--cyan); text-decoration: none; }
+  .digest-content a:hover { text-decoration: underline; }
+  .digest-content ul, .digest-content ol { margin: 6px 0 6px 20px; }
+  .digest-content li { margin: 4px 0; }
+  .digest-content hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+  .digest-content blockquote { border-left: 3px solid var(--cyan); padding-left: 12px; color: #999; margin: 8px 0; }
+  .digest-content code { background: rgba(0,255,242,0.08); padding: 2px 5px; border-radius: 3px; font-size: 0.9em; }
+  .digest-content pre code { display: block; padding: 10px; overflow-x: auto; }
 
   /* Search runs */
   .run-card {
@@ -1016,7 +1028,7 @@ async function loadDigests() {
         <span class="digest-toggle" id="toggle-${s.id}" style="float:right;color:var(--cyan)">[+]</span>
       </div>
       <div class="digest-body" id="body-${s.id}" style="display:none">
-        <pre class="digest-content">${esc(s.content)}</pre>
+        <div class="digest-content">${marked.parse(s.content)}</div>
       </div>
     </div>
   `).join('');
