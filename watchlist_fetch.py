@@ -152,12 +152,16 @@ WD_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHT
 
 
 def fetch_workday(slug, limit=100):
-    """Workday adapter. slug format: '{tenant}/{site}' e.g. 'broadcom/External_Career'."""
+    """Workday adapter. slug format: '{tenant.wdN}/{site}' e.g. 'broadcom.wd1/External_Career'.
+    Legacy format '{tenant}/{site}' (no wdN) assumes wd1 for backwards compatibility."""
     parts = slug.split("/", 1)
     if len(parts) != 2:
-        return None, f"slug must be 'tenant/site', got: {slug}"
-    tenant, site = parts
-    base = f"https://{tenant}.wd1.myworkdayjobs.com/wday/cxs/{tenant}/{site}"
+        return None, f"slug must be 'tenant.wdN/site', got: {slug}"
+    hostname, site = parts
+    # hostname is either 'broadcom.wd1' or legacy 'broadcom' (assume wd1)
+    tenant = hostname.split(".")[0]
+    wd_host = hostname if "." in hostname else f"{hostname}.wd1"
+    base = f"https://{wd_host}.myworkdayjobs.com/wday/cxs/{tenant}/{site}"
 
     results = []
     offset = 0
@@ -214,7 +218,7 @@ def fetch_workday(slug, limit=100):
             results.append({
                 "external_id": req_id,
                 "position":    j.get("title", ""),
-                "url":         f"https://{tenant}.wd1.myworkdayjobs.com/en-US/{site}{ext_path}",
+                "url":         f"https://{wd_host}.myworkdayjobs.com/en-US/{site}{ext_path}",
                 "jd_text":     jd_text[:18000],
             })
             time.sleep(0.15)
