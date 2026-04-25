@@ -628,7 +628,6 @@
       </select>
       <select id="filter-source" onchange="loadJobs()">
         <option value="">ALL SOURCES</option>
-        <option value="linkedin">LINKEDIN</option>
       </select>
     </div>
 
@@ -1047,7 +1046,20 @@ function toggleDigest(id) {
 }
 
 // ── Init ───────────────────────────────────────────────────────────────
-loadJobs();
+async function init() {
+  try {
+    const data = await fetch('/api/sources').then(r => r.json());
+    const sel = document.getElementById('filter-source');
+    (data.sources || []).forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s;
+      opt.textContent = s.toUpperCase();
+      sel.appendChild(opt);
+    });
+  } catch (e) { /* keep ALL SOURCES only fallback */ }
+  loadJobs();
+}
+init();
 </script>
 </body>
 </html>
