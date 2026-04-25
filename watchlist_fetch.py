@@ -148,10 +148,89 @@ def fetch_lever(slug, limit=100):
     return results, None
 
 
+WD_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+
+def fetch_workday(slug, limit=100):
+    """Workday adapter. slug format: '{tenant}/{site}' e.g. 'broadcom/External_Career'."""
+    parts = slug.split("/", 1)
+    if len(parts) != 2:
+        return None, f"slug must be 'tenant/site', got: {slug}"
+    tenant, site = parts
+    base = f"https://{tenant}.wd1.myworkdayjobs.com/wday/cxs/{tenant}/{site}"
+
+    results = []
+    offset = 0
+    batch = min(limit, 20)
+
+    while len(results) < limit:
+        body = json.dumps({"limit": batch, "offset": offset, "searchText": "", "appliedFacets": {}})
+        try:
+            r = subprocess.run(
+                ["curl", "-sS", "--max-time", CURL_MAX_TIME,
+                 "-X", "POST",
+                 "-H", "Content-Type: application/json",
+                 "-H", "Accept: application/json",
+                 "-A", WD_UA,
+                 "-d", body,
+                 f"{base}/jobs"],
+                capture_output=True, text=True, timeout=SUBPROCESS_TIMEOUT,
+            )
+            if r.returncode != 0:
+                return None, f"curl exit {r.returncode}: {r.stderr.strip()[:120]}"
+            data = json.loads(r.stdout)
+        except subprocess.TimeoutExpired:
+            return None, "timeout on jobs list"
+        except Exception as e:
+            return None, str(e)
+
+        postings = data.get("jobPostings", [])
+        if not postings:
+            break
+
+        for j in postings:
+            if len(results) >= limit:
+                break
+            ext_path = j.get("externalPath", "")
+            # ext_path like /job/Location/Title_REQID — strip leading /job/
+            path_seg = ext_path.lstrip("/")
+            jd_text = ""
+            try:
+                jr = subprocess.run(
+                    ["curl", "-sS", "--max-time", CURL_MAX_TIME,
+                     "-H", "Accept: application/json",
+                     "-A", WD_UA,
+                     f"{base}/{path_seg}"],
+                    capture_output=True, text=True, timeout=SUBPROCESS_TIMEOUT,
+                )
+                if jr.returncode == 0:
+                    jd_data = json.loads(jr.stdout)
+                    raw = jd_data.get("jobPostingInfo", {}).get("jobDescription", "")
+                    jd_text = strip_html(raw)
+            except Exception:
+                pass
+
+            req_id = ext_path.split("_")[-1] if "_" in ext_path else ext_path
+            results.append({
+                "external_id": req_id,
+                "position":    j.get("title", ""),
+                "url":         f"https://{tenant}.wd1.myworkdayjobs.com/en-US/{site}{ext_path}",
+                "jd_text":     jd_text[:18000],
+            })
+            time.sleep(0.15)
+
+        offset += len(postings)
+        if offset >= data.get("total", 0):
+            break
+
+    return results, None
+
+
 FETCHERS = {
     "greenhouse": fetch_greenhouse,
     "ashby":      fetch_ashby,
     "lever":      fetch_lever,
+    "workday":    fetch_workday,
 }
 
 

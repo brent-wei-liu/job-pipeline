@@ -252,7 +252,7 @@ _WATCHLIST_SEED = [
     # ── Workable (not yet implemented) ───────────────────────────────────
     ("Hugging Face",          "workable",   "huggingface",           0),
     # ── Workday (unofficial API, not yet implemented) ─────────────────────
-    ("Broadcom",              "workday",    "broadcom.wd1",          0),
+    ("Broadcom",              "workday",    "broadcom/External_Career", 0),
     ("NVIDIA",                "workday",    "nvidia.wd5",            0),
     ("Micron",                "workday",    "micron.wd1",            0),
     ("Marvell",               "workday",    "marvell.wd1",           0),
