@@ -13,6 +13,7 @@ log = logging.getLogger("watchlist_fetch")
 
 sys.path.insert(0, str(Path(__file__).parent))
 from db import get_conn, job_exists, job_duplicate, insert_job
+from job_fetch import reject_by_title
 
 CURL_MAX_TIME = "10"   # curl --max-time seconds
 SUBPROCESS_TIMEOUT = 15  # subprocess.run timeout (hard kill)
@@ -226,6 +227,13 @@ def run(args):
                 skip_count += 1
                 continue
 
+            reason = reject_by_title(job["position"])
+            status = "rejected" if reason else "accepted"
+            if reason:
+                log.info("  ✗ %s / %s — %s", company, job["position"], reason)
+            else:
+                log.info("  ✓ %s / %s", company, job["position"])
+
             insert_job(
                 conn,
                 linkedin_id=linkedin_id,
@@ -233,10 +241,10 @@ def run(args):
                 position=job["position"],
                 url=job["url"],
                 jd_text=job["jd_text"],
-                status="accepted",
+                status=status,
+                reject_reason=reason,
                 source="watchlist",
             )
-            log.info("  ✓ %s / %s", company, job["position"])
             new_count += 1
 
         print(f"  {company}: fetched={len(jobs)}, new={new_count}, skip={skip_count}")
