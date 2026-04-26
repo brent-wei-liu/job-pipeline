@@ -687,15 +687,6 @@
   .cc-raised { color: #aaa; }
   .cc-fin-sep { color: #333; margin: 0 6px; }
   .cc-investors { font-size: 0.72em; color: #555; margin-top: 3px; }
-  .cc-transient { border-color: #222; opacity: 0.85; }
-  .cc-pending-msg { font-size: 0.76em; color: #555; margin: 6px 0 10px; }
-  .cc-analyze-now-btn {
-    font-family: 'Share Tech Mono', monospace; font-size: 0.78em;
-    background: none; border: 1px solid var(--cyan); color: var(--cyan);
-    padding: 6px 0; cursor: pointer; width: 100%; margin-top: 2px;
-  }
-  .cc-analyze-now-btn:hover { background: rgba(0,255,242,0.07); }
-  .cc-analyze-now-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 </style>
 </head>
 <body>
@@ -821,7 +812,6 @@
 // ── State ──────────────────────────────────────────────────────────────
 let currentSort = 'fetched_at';
 let analyzedCompanies = new Set(); // companies with fresh analysis
-const transientCards = new Map();  // company name → true, for placeholder cards not in watchlist
 let currentOrder = 'desc';
 let debounceTimer = null;
 
@@ -1229,20 +1219,13 @@ async function loadCompanies() {
   if (analyzedFilter === 'no')  companies = companies.filter(c => c.overall_score == null);
 
   const grid = document.getElementById('companies-grid');
-
-  // Prepend transient placeholder cards for companies not in the watchlist
-  const transientNames = [...transientCards.keys()].filter(
-    name => !companies.some(c => c.company === name)
-  );
-  const transientHtml = transientNames.map(renderTransientCard).join('');
-
-  if (!companies.length && !transientNames.length) {
+  if (!companies.length) {
     grid.innerHTML = '<div style="color:#666;padding:20px">No companies match filter.</div>';
     return;
   }
 
   grid.className = 'companies-grid';
-  const regularHtml = companies.map((c, i) => {
+  grid.innerHTML = companies.map((c, i) => {
     const analyzed = c.overall_score != null;
     const cardId = 'cc-' + i;
     const scoreHtml = analyzed
@@ -1294,44 +1277,6 @@ async function loadCompanies() {
       </div>
     </div>`;
   }).join('');
-  grid.innerHTML = transientHtml + regularHtml;
-}
-
-function renderTransientCard(name) {
-  return `<div class="company-card cc-transient" data-company="${esc(name)}">
-    <div class="cc-header">
-      <div class="cc-name">${esc(name)}</div>
-      <div class="cc-overall pending">—</div>
-    </div>
-    <div class="cc-pending-msg">Not in watchlist — analysis will be saved to DB when run</div>
-    <button class="cc-analyze-now-btn" onclick="analyzeTransient(this);event.stopPropagation()">► ANALYZE NOW</button>
-  </div>`;
-}
-
-async function analyzeTransient(btn) {
-  const card = btn.closest('.company-card');
-  const name = card.dataset.company;
-  btn.disabled = true;
-  btn.textContent = 'ANALYZING...';
-  try {
-    const res = await fetch(`/api/companies/${encodeURIComponent(name)}/analyze`, { method: 'POST' });
-    if (!res.ok) throw new Error(await res.text());
-    const data = await res.json();
-    analyzedCompanies.add(name);
-    transientCards.delete(name);
-    toast(`${name}: score ${data.overall_score}/10`);
-    await loadCompanies();
-    const newCard = document.querySelector(`.company-card[data-company="${name.replace(/"/g, '\\"')}"]`);
-    if (newCard) {
-      newCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      newCard.classList.add('card-highlight');
-      setTimeout(() => newCard.classList.remove('card-highlight'), 1800);
-    }
-  } catch(e) {
-    btn.disabled = false;
-    btn.textContent = '► ANALYZE NOW';
-    toast(`Error: ${e.message.slice(0, 80)}`);
-  }
 }
 
 function getScoreColor(score, isRisk) {
@@ -1428,22 +1373,21 @@ function toggleCompanyCard(cardId, event) {
 }
 
 async function goToCompany(name) {
+  // If no analysis yet, stay on jobs tab and guide the user to the ANALYZE button
+  if (!analyzedCompanies.has(name)) {
+    toast(`No analysis for ${name} yet — click [ANALYZE] on this row to start`);
+    return;
+  }
+
   // Switch to COMPANIES tab
   document.querySelectorAll('.nav button').forEach(b => b.classList.remove('active'));
   document.querySelectorAll('.nav button').forEach(b => { if (b.textContent === 'COMPANIES') b.classList.add('active'); });
   document.querySelectorAll('.content > div').forEach(d => d.style.display = 'none');
   document.getElementById('tab-companies').style.display = 'block';
 
-  // Load companies if not already rendered
   await loadCompanies();
 
-  // Find card by data-company attribute; if missing, insert transient placeholder
-  let card = document.querySelector(`.company-card[data-company="${name.replace(/"/g, '\\"')}"]`);
-  if (!card) {
-    transientCards.set(name, true);
-    await loadCompanies();
-    card = document.querySelector(`.company-card[data-company="${name.replace(/"/g, '\\"')}"]`);
-  }
+  const card = document.querySelector(`.company-card[data-company="${name.replace(/"/g, '\\"')}"]`);
   if (!card) return;
 
   // Scroll and highlight
