@@ -675,11 +675,13 @@
   .cc-expand-hint { font-size: 0.68em; color: #333; margin-top: 6px; text-align: center; }
   /* Financial profile */
   .cc-finance { margin: 8px 0 2px; padding-top: 7px; border-top: 1px solid #111; }
-  .cc-cap-marks { display: flex; justify-content: space-between; font-size: 0.58em; color: #2a2a2a; font-family: 'Share Tech Mono', monospace; margin-bottom: 1px; }
-  .cc-cap-rail { height: 1px; background: #1c1c1c; margin-bottom: 0; }
-  .cc-cap-ptr-row { position: relative; height: 20px; overflow: visible; }
-  .cc-cap-ptr { position: absolute; transform: translateX(-50%); font-family: 'Orbitron', sans-serif; font-size: 0.6em; color: var(--cyan); white-space: nowrap; line-height: 1.5; text-align: center; }
-  .cc-tier-badge { display: inline-block; border: 1px solid; padding: 1px 5px; font-family: 'Share Tech Mono', monospace; font-size: 0.6em; margin-top: 3px; }
+  .cc-cap-ptr-row { position: relative; height: 34px; overflow: visible; }
+  .cc-cap-ptr { position: absolute; transform: translateX(-50%); text-align: center; bottom: 0; }
+  .cc-cap-arrow { display: block; color: var(--cyan); font-size: 0.85em; line-height: 1; }
+  .cc-cap-val { display: block; font-family: 'Orbitron', sans-serif; font-size: 0.6em; color: var(--cyan); white-space: nowrap; line-height: 1.3; }
+  .cc-cap-axis { position: relative; height: 14px; border-top: 1px solid #555; margin-bottom: 2px; overflow: visible; }
+  .cc-cap-tick { position: absolute; transform: translateX(-50%); font-family: 'Share Tech Mono', monospace; font-size: 0.58em; color: var(--cyan); top: 2px; white-space: nowrap; }
+  .cc-tier-badge { display: inline-block; border: 1px solid; padding: 1px 5px; font-family: 'Share Tech Mono', monospace; font-size: 0.6em; margin-top: 2px; }
   .cc-stage-line { display: flex; align-items: center; flex-wrap: wrap; gap: 0; font-size: 0.78em; }
   .cc-stage-badge { border: 1px solid; padding: 1px 6px; font-family: 'Share Tech Mono', monospace; }
   .cc-raised { color: #aaa; }
@@ -1310,9 +1312,18 @@ function buildFinanceHtml(c) {
       cap >= 2   ? ['MID-CAP',   '#f0c040'] :
                    ['SMALL-CAP', '#555555'];
     return `<div class="cc-finance">
-      <div class="cc-cap-marks"><span>$1B</span><span>$10B</span><span>$100B</span><span>$1T</span></div>
-      <div class="cc-cap-rail"></div>
-      <div class="cc-cap-ptr-row"><div class="cc-cap-ptr" style="left:${pct}%">▼ ${capStr}</div></div>
+      <div class="cc-cap-ptr-row">
+        <div class="cc-cap-ptr" style="left:${pct}%">
+          <span class="cc-cap-arrow">▼</span>
+          <span class="cc-cap-val">${capStr}</span>
+        </div>
+      </div>
+      <div class="cc-cap-axis">
+        <span class="cc-cap-tick" style="left:0%">$1B</span>
+        <span class="cc-cap-tick" style="left:33.3%">$10B</span>
+        <span class="cc-cap-tick" style="left:66.7%">$100B</span>
+        <span class="cc-cap-tick" style="left:100%">$1T</span>
+      </div>
       <span class="cc-tier-badge" style="color:${tierColor};border-color:${tierColor}">${tierLabel}</span>
     </div>`;
   } else if (c.is_public === 0) {
