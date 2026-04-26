@@ -62,6 +62,8 @@ def list_jobs(
     if source:
         sql += " AND source = ?"
         params.append(source)
+    if status != "rejected":
+        sql += " AND (reject_reason IS NULL OR reject_reason != 'user_deleted')"
     if min_score is not None:
         if min_score == -1:
             sql += " AND match_score IS NULL"
