@@ -15,16 +15,24 @@ python3 api.py                        # → http://127.0.0.1:8080
 # Fetch jobs from LinkedIn → filter → store in SQLite
 python3 job_fetch.py --max-accept 12
 
+# Fetch jobs from watchlist career pages (44 companies)
+python3 watchlist_fetch.py --limit 50
+python3 watchlist_fetch.py --dry-run --company Anthropic --limit 5
+
 # Generate digest JSON (for LLM formatting)
 python3 job_digest.py query 1         # last 1 day
 python3 job_digest.py query 7         # last 7 days
 python3 job_digest.py stats 30        # quick stats
 
-# Score accepted jobs against the resume (resumable, batched)
-python3 backfill_scores.py                        # score everything unscored
-python3 backfill_scores.py --limit 10             # cap to 10 jobs
-python3 backfill_scores.py --dry-run              # list jobs without calling LLM
-python3 backfill_scores.py --batch-size 5 --batch-delay 3
+# List unscored jobs for LLM scoring (output JSON for skill)
+python3 backfill_scores.py --stats
+python3 backfill_scores.py --json --limit 20
+echo '<scores_json>' | python3 job_digest.py save-score
+
+# Company analysis I/O
+python3 company_analyze.py --stats
+python3 company_analyze.py --list-pending
+echo '<analysis_json>' | python3 company_analyze.py --save
 
 # Install dependencies
 pip3 install fastapi uvicorn requests
@@ -32,14 +40,15 @@ pip3 install fastapi uvicorn requests
 
 ## Architecture
 
-- **db.py** — Shared SQLite data layer. All scripts call `get_conn()` which auto-creates tables and runs lightweight `ALTER TABLE` migrations on startup. Tables: `jobs` (dedup by `linkedin_id` + company/position/JD-prefix; user fields `starred` / `notes` / `applied_at`; match-score fields `match_score` / `match_summary` / `match_reasons` / `match_gaps` / `agentic_ai_relevant` / `scored_at`), `search_runs`, `summaries` (date-keyed digest history). DB file lives at `data/jobs.db` in WAL mode.
-- **job_fetch.py** — Scrapes LinkedIn's guest job search API (no auth needed), applies rejection rules (`reject_reason()` function), stores both accepted and rejected jobs. Zero LLM token usage. Configurable via `ROLE_QUERIES` and `MAX_ACCEPT` constants at top of file.
-- **job_digest.py** — Read-only queries against SQLite, outputs structured JSON for an LLM to format into a WhatsApp digest. Two subcommands: `query` and `stats`.
-- **backfill_scores.py** — Reads accepted jobs with no `match_score` and asks an LLM (via the local OpenClaw gateway at `OPENCLAW_GATEWAY_URL`, default `http://127.0.0.1:18789`) to score resume↔JD fit on a 1–10 scale, returning a structured JSON payload (score, match reasons, gaps, agentic-AI flag, Chinese summary). Safe to interrupt — resumes from where it left off. Loads resume from `data/resume.md` (preferred) or the legacy `data/resume_text.txt`, falling back to `pdftotext` on `Brent_Wei_Liu_CV.pdf` in the parent workspace. Auth token comes from `OPENCLAW_GATEWAY_TOKEN` or `~/.openclaw/openclaw.json`.
-- **save_report.py** — One-off helper to insert a hand-written `digest_report.md` into the `summaries` table for a specific date. Hardcoded macOS paths (`/Users/little_claw/...`); not portable, kept around as a manual backfill tool.
-- **api.py** — FastAPI backend serving REST endpoints (`/api/jobs`, `/api/stats`, `/api/search-runs`) and the static frontend.
-- **static/index.html** — Single-file frontend (HTML+CSS+JS, no build step). Retro-CRT aesthetic with Orbitron/Share Tech Mono fonts. Three tabs: Jobs, Stats, Search Runs.
-- **data/** — Persistent state. Holds `jobs.db` (+ WAL sidecars), `resume.md` (curated markdown resume used for matching), and a legacy `resume_text.txt` fallback.
+- **db.py** — Shared SQLite data layer. All scripts call `get_conn()` which auto-creates tables and runs lightweight `ALTER TABLE` migrations on startup. Tables: `jobs`, `search_runs`, `summaries`, `watchlist`, `company_analysis`. DB file lives at `data/jobs.db` in WAL mode.
+- **job_fetch.py** — Scrapes LinkedIn's guest job search API (no auth needed), applies rejection rules (`reject_reason()` function), stores both accepted and rejected jobs. Zero LLM token usage.
+- **watchlist_fetch.py** — Fetches jobs from 44 company career pages. Adapter-based: Greenhouse / Ashby / Lever / Workday / SmartRecruiters. Each HTTP request uses `subprocess + curl --max-time 10`. Applies `reject_by_title()` before insert.
+- **backfill_scores.py** — I/O-only: lists unscored `accepted` jobs as JSON (`--json`), or accepts a JSON array on stdin and writes scores back. No LLM calls — scoring is done by the `job-score` / `job-backfill` skills. Loads resume from `data/resume.md`.
+- **company_analyze.py** — I/O-only: lists companies pending analysis (`--list-pending`), or accepts a JSON array on stdin and writes to `company_analysis` table. No LLM calls — analysis done by `company-analyze` skill.
+- **job_digest.py** — Read-only queries against SQLite, outputs structured JSON for an LLM to format. Subcommands: `query`, `stats`, `save-score`, `save-report`.
+- **api.py** — FastAPI backend. Key endpoints: `/api/jobs`, `/api/companies`, `/api/stats`, `/api/summaries`, `POST /api/jobs/bulk-delete`.
+- **static/index.html** — Single-file frontend. Retro-CRT aesthetic. Five tabs: Jobs, Stats, Search Runs, Digests, Companies.
+- **data/** — `jobs.db` (WAL), `resume.md` (scoring), `resume_text.txt` (legacy fallback).
 
 ## Key Design Decisions
 
@@ -51,6 +60,21 @@ pip3 install fastapi uvicorn requests
 - Schema evolves via additive `ALTER TABLE ADD COLUMN` migrations inside `_init_tables()` — no separate migration framework.
 - `notion_page_id` column exists but is a historical artifact — Notion integration has been removed.
 
+## Skills
+
+Four Claude Code skills live in `.claude/skills/`. They do the LLM work; Python scripts handle only I/O.
+
+| Skill | Trigger | What it does | Writes to |
+|---|---|---|---|
+| `job-score` | Daily 10:05 AM PT | Score recent unscored accepted jobs (resume↔JD, 1-10) | `jobs.match_score` etc. |
+| `job-backfill` | On demand | Same as job-score but processes full historical backlog | `jobs.match_score` etc. |
+| `job-digest` | Daily after score | Generate Chinese digest, email to user | `summaries` table + Gmail |
+| `company-analyze` | Sunday 8:00 AM PT | WebSearch + 5-dim score for watchlist companies | `company_analysis` table |
+
+See [`docs/SKILLS.md`](docs/SKILLS.md) for full workflow, I/O format, and manual invocation.
+
 ## Cron Schedule
 
-Fetch runs daily at 10:00 AM PT (silent), Digest runs at 10:05 AM PT (sends to WhatsApp). Score backfill is run on demand (not yet scheduled).
+- `0 10 * * *` — `job_fetch.py` (LinkedIn fetch, local crontab)
+- Daily 10:05 AM — `job-score` + `job-digest` skills (Claude scheduled tasks)
+- Sunday 8:00 AM — `company-analyze` skill (Claude scheduled task)

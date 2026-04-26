@@ -143,83 +143,41 @@ GET    /api/stats?days=30      # 接受/拒绝/标星数、热门公司、拒绝
 GET    /api/summaries?limit=30 # 历史 digest 报告（summaries 表）
 ```
 
-## 定时任务
+## 定时任务 & Skills
 
-三个任务按顺序执行，共享同一个 SQLite 数据库（`data/jobs.db`）：
+任务按顺序执行，共享同一个 SQLite 数据库（`data/jobs.db`）：
 
-| 任务 | 时间 (PT) | 运行环境 | 源码 / Skill | 说明 |
+| 任务 | 时间 (PT) | 触发方式 | Skill / 脚本 | 说明 |
 |------|-----------|----------|-------------|------|
-| Fetch | 10:00 AM | 本地 Mac (crontab) | `job_fetch.py` | 抓取 LinkedIn 职位，规则过滤，存入 SQLite |
-| Score | 10:30 AM | Cowork (scheduled task) | `.claude/skills/job-score/SKILL.md` | LLM 对最近 1 天未评分的 accepted job 打分 |
-| Digest | 11:00 AM | Cowork (scheduled task) | `.claude/skills/job-digest/SKILL.md` | 生成中文日报 → 存 summaries 表 → Gmail 发送 |
+| Fetch (LinkedIn) | 10:00 AM 每天 | 本地 crontab | `job_fetch.py` | 抓取 LinkedIn 职位，规则过滤，存入 SQLite |
+| Fetch (Watchlist) | 随 Fetch 手动或按需 | 手动 / crontab | `watchlist_fetch.py` | 抓取 44 家公司招聘页（Greenhouse/Ashby/Lever/Workday/SmartRecruiters） |
+| Score | 10:05 AM 每天 | Claude scheduled task | `job-score` skill | LLM 对 accepted jobs 做简历匹配评分（1-10 分）→ 写入 `jobs.match_score` |
+| Digest | 每日 Score 后 | Claude scheduled task | `job-digest` skill | 生成中文日报 → 存 `summaries` 表 → Gmail 发送 |
+| Company Analyze | 8:00 AM 每周日 | Claude scheduled task | `company-analyze` skill | WebSearch 调研 + 五维评分 → 写入 `company_analysis` 表 |
 
-### Fetch — 本地 crontab
+### Skills 说明
 
-Fetch 需要访问 LinkedIn，只能在本地跑。设置方法：
+| Skill | 用途 | 关键脚本 |
+|---|---|---|
+| `job-score` | 评分最近 1 天的未打分 accepted jobs | `backfill_scores.py --json` + `job_digest.py save-score` |
+| `job-backfill` | 批量补评历史全量未打分 jobs | 同上，处理全部积压 |
+| `job-digest` | 生成中文日报并发邮件 | `job_digest.py query 1` + Gmail API |
+| `company-analyze` | WebSearch 研究公司，五维评分 | `company_analyze.py --list-pending / --save` |
 
-```bash
-crontab -e
-# 加入：
-0 10 * * * cd /Users/little_claw/job-pipeline && /usr/bin/python3 job_fetch.py --max-accept 12 >> /Users/little_claw/job-pipeline/data/fetch.log 2>&1
-```
+详细 workflow 和手动触发方式见 [`docs/SKILLS.md`](docs/SKILLS.md)。
 
-手动运行：
-
-```bash
-cd /Users/little_claw/job-pipeline && python3 job_fetch.py --max-accept 12
-```
-
-### Score — Cowork scheduled task
-
-Cowork 定时任务 `job-pipeline-score`，每天 10:30 自动触发。流程：读 `data/resume.md` → 查最近 1 天未评分的 accepted jobs → LLM 逐个打分（1-10）→ 通过 `job_digest.py save-score` 写回数据库。
-
-Skill 定义：`.claude/skills/job-score/SKILL.md`
-Scheduled task 文件：`~/Documents/Claude/Scheduled/job-pipeline-score/SKILL.md`
-
-手动运行（在 Cowork sidebar "Scheduled" 点 "Run now"）。也可以用旧的 `backfill_scores.py`（通过 OpenClaw gateway）：
+### Fetch 手动运行
 
 ```bash
-python3 backfill_scores.py                       # 评所有未打分的 accepted 职位
-python3 backfill_scores.py --limit 10             # 限制 10 条
-python3 backfill_scores.py --dry-run              # 只列出，不调 LLM
+# LinkedIn
+python3 job_fetch.py --max-accept 12
+# Watchlist（所有 44 家 enabled 公司）
+python3 watchlist_fetch.py --limit 50
+# Watchlist 单家 dry-run
+python3 watchlist_fetch.py --dry-run --company Anthropic --limit 5
 ```
 
-### Digest — Cowork scheduled task
-
-Cowork 定时任务 `job-pipeline-digest`，每天 11:00 自动触发。流程：`job_digest.py query 1` 获取 JSON → LLM 格式化为中文日报（含洞察分析）→ `job_digest.py save-summary` 存数据库 → Gmail 发送至 brent.wei.liu@gmail.com。
-
-Skill 定义：`.claude/skills/job-digest/SKILL.md`
-Scheduled task 文件：`~/Documents/Claude/Scheduled/job-pipeline-digest/SKILL.md`
-
-手动查询：
-
-```bash
-python3 job_digest.py query 1      # 最近 1 天的 jobs（JSON）
-python3 job_digest.py query 7      # 最近 7 天
-python3 job_digest.py stats 30     # 快速统计
-
-# 手动存报告
-echo '<report>' | python3 job_digest.py save-summary
-# 手动存评分
-echo '<json>' | python3 job_digest.py save-score
-```
-
-### LLM 评分格式
-
-Score 和 Digest 都使用相同的评分结构：
-
-```json
-{
-  "job_id": 123,
-  "score": 8,
-  "agentic_ai_relevant": true,
-  "match_reasons": ["LLM ranking experience", "Search/retrieval background"],
-  "gaps": ["No explicit Kubernetes mention"],
-  "summary": "强匹配，候选人在 LLM search ranking 方向有直接经验"
-}
-```
-
-**幂等设计**：只处理 `match_score IS NULL` 的行，可以随时中断、重跑。
+**幂等设计**：评分只处理 `match_score IS NULL` 的行，可随时中断重跑。
 
 ## 依赖
 
