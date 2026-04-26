@@ -917,7 +917,7 @@ function renderJobs(jobs) {
           ${j.starred ? '<span class="badge-starred">★</span>' : '<span style="color:#333">☆</span>'}
         </button>
       </td>
-      <td class="company"><span class="company-link" onclick="goToCompany('${esc(j.company)}');event.stopPropagation()">${esc(j.company)}</span></td>
+      <td class="company"><a class="company-link" href="#" onclick="goToCompany('${esc(j.company)}');event.preventDefault();event.stopPropagation()">${esc(j.company)}</a></td>
       <td class="position">
         <a href="${esc(j.url)}" target="_blank">${esc(j.position)}</a>
         ${j.agentic_ai_relevant ? '<span class="badge-agentic">AGENTIC</span>' : ''}
