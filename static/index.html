@@ -529,47 +529,69 @@
     .table-wrap thead { display: none; }
     .table-wrap tbody { display: block; }
 
-    /* Job row → CSS Grid: 4 columns, 2 rows */
-    /* col1=★(40px) col2=COMPANY+POSITION(flex) col3=SCORE(52px) col4=ACTIONS(90px) */
+    /* Job row → CSS Grid: 5 columns, 2 rows */
+    /* col1=CB(28px) col2=★(40px) col3=COMPANY+POSITION(flex) col4=SCORE(52px) col5=ACTIONS(90px) */
     .job-row {
       display: grid;
-      grid-template-columns: 40px 1fr 52px 90px;
+      grid-template-columns: 28px 40px 1fr 52px 90px;
       grid-template-rows: auto auto;
       border-bottom: none;
     }
 
-    /* ★ — col1, spans both rows */
+    /* CHECKBOX — col1, spans both rows */
     .job-row > td:nth-child(1) {
       grid-column: 1; grid-row: 1 / 3;
       display: flex; align-items: center; justify-content: center;
     }
-    /* COMPANY — col2 row1 */
+    /* ★ — col2, spans both rows */
     .job-row > td:nth-child(2) {
-      grid-column: 2; grid-row: 1;
+      grid-column: 2; grid-row: 1 / 3;
+      display: flex; align-items: center; justify-content: center;
+    }
+    /* COMPANY — col3 row1 */
+    .job-row > td:nth-child(3) {
+      grid-column: 3; grid-row: 1;
       padding-bottom: 2px;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
-    /* POSITION — col2 row2 (stacks under COMPANY, same column) */
-    .job-row > td:nth-child(3) {
-      grid-column: 2; grid-row: 2;
+    /* POSITION — col3 row2 (stacks under COMPANY, same column) */
+    .job-row > td:nth-child(4) {
+      grid-column: 3; grid-row: 2;
       padding-top: 2px; max-width: none;
       white-space: normal; overflow-wrap: anywhere;
     }
-    /* SCORE — col3, spans both rows */
-    .job-row > td:nth-child(4) {
-      grid-column: 3; grid-row: 1 / 3;
+    /* SCORE — col4, spans both rows */
+    .job-row > td:nth-child(5) {
+      grid-column: 4; grid-row: 1 / 3;
       display: flex; align-items: center; justify-content: center;
     }
     /* STATUS / NOTES / DATE — hidden, don't participate in grid */
-    .job-row > td:nth-child(5),
     .job-row > td:nth-child(6),
-    .job-row > td:nth-child(7) { display: none; }
-    /* ACTIONS — col4, spans both rows */
-    .job-row > td:nth-child(8) {
-      grid-column: 4; grid-row: 1 / 3;
+    .job-row > td:nth-child(7),
+    .job-row > td:nth-child(8) { display: none; }
+    /* ACTIONS — col5, spans both rows */
+    .job-row > td:nth-child(9) {
+      grid-column: 5; grid-row: 1 / 3;
       display: flex; flex-direction: column;
       align-items: center; justify-content: center; gap: 6px;
     }
+
+    /* Bulk action bar */
+    #bulk-bar {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: rgba(8,8,8,0.97); border-top: 1px solid var(--cyan);
+      display: flex; align-items: center; justify-content: center; gap: 16px;
+      padding: 10px 20px; z-index: 1000;
+      font-family: 'Share Tech Mono', monospace; color: var(--cyan);
+      font-size: 0.9em;
+    }
+    #bulk-del-btn {
+      background: #cc2222; color: #fff; border: none;
+      padding: 6px 18px; cursor: pointer;
+      font-family: 'Orbitron', sans-serif; font-size: 0.72em; letter-spacing: 0.1em;
+    }
+    #bulk-del-btn:hover { background: #ff3333; }
+    .job-row.row-selected { background: rgba(0,255,242,0.05); }
 
     /* Sub-row, match-row, jd-row: block layout (colspan has no effect, td auto full-width) */
     .sub-row,
@@ -635,6 +657,7 @@
       <table>
         <thead>
           <tr>
+            <th style="width:28px"><input type="checkbox" id="select-all" title="Select all" onchange="toggleSelectAll(this.checked)"></th>
             <th style="width:40px">★</th>
             <th onclick="sortBy('company')">COMPANY</th>
             <th onclick="sortBy('position')">POSITION</th>
@@ -789,9 +812,15 @@ function renderMatchDetail(j) {
 }
 
 function renderJobs(jobs) {
+  selectedIds.clear();
+  updateBulkBar();
   const tbody = document.getElementById('jobs-body');
   tbody.innerHTML = jobs.map(j => `
     <tr class="job-row" id="row-${j.id}">
+      <td>
+        <input type="checkbox" class="job-cb" data-id="${j.id}"
+               onchange="toggleSelect(${j.id}, this.checked)">
+      </td>
       <td>
         <button class="star-btn" onclick="toggleStar(${j.id})">
           ${j.starred ? '<span class="badge-starred">★</span>' : '<span style="color:#333">☆</span>'}
@@ -822,7 +851,7 @@ function renderJobs(jobs) {
       </td>
     </tr>
     <tr class="sub-row" id="sub-${j.id}">
-      <td colspan="8">
+      <td colspan="9">
         <div class="sub-inner">
           <span class="badge badge-${j.status}">${j.status}</span>
           <span class="sub-date">${formatDate(j.fetched_at)}</span>
@@ -834,12 +863,12 @@ function renderJobs(jobs) {
       </td>
     </tr>
     <tr id="match-row-${j.id}" style="display:none">
-      <td colspan="8">
+      <td colspan="9">
         ${renderMatchDetail(j)}
       </td>
     </tr>
     <tr id="jd-row-${j.id}" style="display:none">
-      <td colspan="8">
+      <td colspan="9">
         <div class="jd-panel open">${esc(j.jd_text || 'No JD available')}</div>
       </td>
     </tr>
@@ -1059,7 +1088,89 @@ async function init() {
   } catch (e) { /* keep ALL SOURCES only fallback */ }
   loadJobs();
 }
+
+// ── Bulk select + delete ──────────────────────────────────────────────────
+let selectedIds = new Set();
+let bulkConfirmTimer = null;
+
+function toggleSelect(id, checked) {
+  if (checked) selectedIds.add(id);
+  else selectedIds.delete(id);
+  document.getElementById('row-' + id)?.classList.toggle('row-selected', checked);
+  updateBulkBar();
+  updateSelectAllCb();
+}
+
+function toggleSelectAll(checked) {
+  document.querySelectorAll('.job-cb').forEach(cb => {
+    cb.checked = checked;
+    const id = parseInt(cb.dataset.id);
+    if (checked) selectedIds.add(id);
+    else selectedIds.delete(id);
+    document.getElementById('row-' + id)?.classList.toggle('row-selected', checked);
+  });
+  updateBulkBar();
+}
+
+function updateSelectAllCb() {
+  const cbs = [...document.querySelectorAll('.job-cb')];
+  const sel = document.getElementById('select-all');
+  if (!sel || !cbs.length) return;
+  const nChecked = cbs.filter(c => c.checked).length;
+  sel.checked = nChecked === cbs.length;
+  sel.indeterminate = nChecked > 0 && nChecked < cbs.length;
+}
+
+function updateBulkBar() {
+  const n = selectedIds.size;
+  const bar = document.getElementById('bulk-bar');
+  if (!bar) return;
+  bar.style.display = n > 0 ? 'flex' : 'none';
+  document.getElementById('bulk-count').textContent = n + ' SELECTED';
+  if (n === 0 && bulkConfirmTimer) {
+    clearTimeout(bulkConfirmTimer); bulkConfirmTimer = null;
+    const btn = document.getElementById('bulk-del-btn');
+    if (btn) { btn.textContent = 'DELETE SELECTED'; btn.dataset.confirm = ''; }
+  }
+}
+
+function bulkDeleteClick() {
+  const btn = document.getElementById('bulk-del-btn');
+  if (btn.dataset.confirm === 'yes') {
+    clearTimeout(bulkConfirmTimer); bulkConfirmTimer = null;
+    bulkDeleteExec();
+  } else {
+    btn.dataset.confirm = 'yes';
+    btn.textContent = 'SURE? DELETE ' + selectedIds.size;
+    bulkConfirmTimer = setTimeout(() => {
+      btn.dataset.confirm = '';
+      btn.textContent = 'DELETE SELECTED';
+    }, 3000);
+  }
+}
+
+async function bulkDeleteExec() {
+  const ids = [...selectedIds];
+  try {
+    const res = await fetch('/api/jobs/bulk-delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids })
+    });
+    const data = await res.json();
+    toast('DELETED ' + data.updated + ' JOBS');
+  } catch(e) { toast('ERROR: ' + e.message); return; }
+  selectedIds.clear();
+  document.getElementById('bulk-bar').style.display = 'none';
+  loadJobs();
+}
+
 init();
 </script>
+
+<div id="bulk-bar" style="display:none">
+  <span id="bulk-count">0 SELECTED</span>
+  <button id="bulk-del-btn" onclick="bulkDeleteClick()">DELETE SELECTED</button>
+</div>
 </body>
 </html>

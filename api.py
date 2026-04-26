@@ -3,7 +3,7 @@
 import sys
 from pathlib import Path
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
@@ -72,6 +72,25 @@ def list_jobs(
     jobs = [dict(r) for r in rows]
     conn.close()
     return {"jobs": jobs, "total": len(jobs)}
+
+
+class BulkDeleteBody(BaseModel):
+    ids: List[int]
+
+@app.post("/api/jobs/bulk-delete")
+def bulk_delete_jobs(body: BulkDeleteBody):
+    if not body.ids:
+        raise HTTPException(400, "ids list is required and must be non-empty")
+    conn = get_conn()
+    placeholders = ",".join("?" * len(body.ids))
+    result = conn.execute(
+        f"UPDATE jobs SET status='rejected', reject_reason='user_deleted' WHERE id IN ({placeholders})",
+        body.ids,
+    )
+    conn.commit()
+    updated = result.rowcount
+    conn.close()
+    return {"ok": True, "updated": updated}
 
 
 @app.get("/api/jobs/{job_id}")
