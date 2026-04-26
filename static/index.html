@@ -651,6 +651,13 @@
       <select id="filter-source" onchange="loadJobs()">
         <option value="">ALL SOURCES</option>
       </select>
+      <select id="filter-score" onchange="loadJobs()">
+        <option value="">ALL SCORES</option>
+        <option value="8">≥ 8</option>
+        <option value="6">≥ 6</option>
+        <option value="4">≥ 4</option>
+        <option value="-1">UNSCORED</option>
+      </select>
     </div>
 
     <div class="table-wrap">
@@ -774,6 +781,8 @@ async function loadJobs() {
   if (search) params.set('search', search);
   const source = document.getElementById('filter-source').value;
   if (source) params.set('source', source);
+  const score = document.getElementById('filter-score').value;
+  if (score !== '') params.set('min_score', score);
 
   const res = await fetch('/api/jobs?' + params);
   const data = await res.json();

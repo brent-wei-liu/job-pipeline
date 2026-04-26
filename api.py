@@ -42,6 +42,7 @@ def list_jobs(
     starred: Optional[int] = Query(None),
     search: Optional[str] = Query(None),
     source: Optional[str] = Query(None),
+    min_score: Optional[int] = Query(None),
     sort: str = Query("fetched_at"),
     order: str = Query("desc"),
 ):
@@ -61,6 +62,12 @@ def list_jobs(
     if source:
         sql += " AND source = ?"
         params.append(source)
+    if min_score is not None:
+        if min_score == -1:
+            sql += " AND match_score IS NULL"
+        else:
+            sql += " AND match_score >= ?"
+            params.append(min_score)
 
     allowed_sorts = {"fetched_at", "company", "position", "status", "starred", "match_score"}
     if sort not in allowed_sorts:
