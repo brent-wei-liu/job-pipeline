@@ -793,6 +793,7 @@
 <script>
 // ── State ──────────────────────────────────────────────────────────────
 let currentSort = 'fetched_at';
+let analyzedCompanies = new Set(); // companies with fresh analysis
 let currentOrder = 'desc';
 let debounceTimer = null;
 
@@ -941,8 +942,8 @@ function renderJobs(jobs) {
         <div class="sub-inner">
           <span class="badge badge-${j.status}">${j.status}</span>
           <span class="sub-date">${formatDate(j.fetched_at)}</span>
-          <span id="analyze-area-${j.id}" style="margin-left:12px"><button class="analyze-btn" onclick="analyzeCompany(${j.id},this.dataset.c);event.stopPropagation()" data-c="${esc(j.company)}">[ANALYZE]</button></span>
         </div>
+        <div id="analyze-area-${j.id}" style="margin-bottom:4px"><button class="analyze-btn" onclick="analyzeCompany(${j.id},this.dataset.c);event.stopPropagation()" data-c="${esc(j.company)}">${analyzedCompanies.has(j.company) ? '[REANALYZE]' : '[ANALYZE]'}</button></div>
         <input class="notes-input" value="${esc(j.notes || '')}"
                placeholder="add note..."
                onblur="saveNotes(${j.id}, this.value)"
@@ -988,6 +989,7 @@ async function analyzeCompany(jobId, company) {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || res.statusText);
+    analyzedCompanies.add(company);
     const model = (data.analyst_model || '').replace('claude-', '').replace('-4-', ' 4.');
     const cached = data.cached ? ' (cached)' : '';
     area.innerHTML = `<span class="analyze-result">
@@ -1311,6 +1313,10 @@ async function init() {
       sel.appendChild(opt);
     });
   } catch (e) { /* keep ALL SOURCES only fallback */ }
+  try {
+    const ca = await fetch('/api/companies').then(r => r.json());
+    (ca.companies || []).forEach(c => { if (c.overall_score != null) analyzedCompanies.add(c.company); });
+  } catch (e) {}
   loadJobs();
 }
 
