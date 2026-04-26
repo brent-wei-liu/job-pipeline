@@ -71,7 +71,7 @@ Four Claude Code skills live in `.claude/skills/`. They do the LLM work; Python 
 | `job-digest` | Daily after score | Generate Chinese digest, email to user | `summaries` table + Gmail |
 | `company-analyze` | Sunday 8:00 AM PT | WebSearch + 5-dim score for watchlist companies | `company_analysis` table |
 
-See [`docs/SKILLS.md`](docs/SKILLS.md) for full workflow, I/O format, and manual invocation.
+To run manually: invoke the skill by name in a Claude Code session, or use the Python I/O scripts directly (see Commands section above).
 
 ## Cron Schedule
 

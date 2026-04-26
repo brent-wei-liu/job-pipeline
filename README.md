@@ -164,7 +164,7 @@ GET    /api/summaries?limit=30 # 历史 digest 报告（summaries 表）
 | `job-digest` | 生成中文日报并发邮件 | `job_digest.py query 1` + Gmail API |
 | `company-analyze` | WebSearch 研究公司，五维评分 | `company_analyze.py --list-pending / --save` |
 
-详细 workflow 和手动触发方式见 [`docs/SKILLS.md`](docs/SKILLS.md)。
+手动触发任意 skill：在 Claude Code sidebar 的 "Scheduled" 面板点 "Run now"，或直接在对话里说 "run job-score skill"。
 
 ### Fetch 手动运行
 
