@@ -643,6 +643,25 @@
   .cc-bar-fill.risk    { background: #ff4444; box-shadow: 0 0 4px rgba(255,68,68,0.4); }
   .cc-analyzed-at { font-size: 0.7em; color: #333; margin-top: 10px; }
   .badge-disabled { background: #1a1a1a; color: #444; padding: 1px 6px; font-size: 0.7em; border: 1px solid #333; }
+  .cc-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; }
+  .cc-jobs-btn {
+    font-family: 'Share Tech Mono', monospace; font-size: 0.72em;
+    background: none; border: 1px solid #2a2a2a; color: #555;
+    padding: 3px 8px; cursor: pointer;
+  }
+  .cc-jobs-btn:hover { border-color: var(--cyan); color: var(--cyan); }
+  .cc-reasoning {
+    margin-top: 10px; border-top: 1px solid #1a1a1a; padding-top: 10px;
+  }
+  .cc-reason-row { display: flex; gap: 8px; margin-bottom: 6px; font-size: 0.78em; }
+  .cc-reason-label { width: 78px; flex-shrink: 0; font-family: 'Share Tech Mono', monospace; }
+  .cc-reason-label.funding { color: #00fff2; }
+  .cc-reason-label.revenue { color: #00ff41; }
+  .cc-reason-label.moat    { color: #f0c040; }
+  .cc-reason-label.stage   { color: #a080ff; }
+  .cc-reason-label.risk    { color: #ff4444; }
+  .cc-reason-text { color: #999; line-height: 1.4; }
+  .cc-expand-hint { font-size: 0.68em; color: #333; margin-top: 6px; text-align: center; }
 </style>
 </head>
 <body>
@@ -1153,26 +1172,41 @@ async function loadCompanies() {
   }
 
   grid.className = 'companies-grid';
-  grid.innerHTML = companies.map(c => {
+  grid.innerHTML = companies.map((c, i) => {
     const analyzed = c.overall_score != null;
+    const cardId = 'cc-' + i;
     const scoreHtml = analyzed
       ? `<div class="cc-overall">${c.overall_score}</div>`
       : `<div class="cc-overall pending">PENDING</div>`;
 
-    const barsHtml = analyzed ? `
-      <div class="cc-bars">
-        ${bar('资金安全垫', 'funding', c.funding_score)}
-        ${bar('收入确定性', 'revenue', c.revenue_score)}
-        ${bar('竞争壁垒',   'moat',    c.moat_score)}
-        ${bar('阶段规模',   'stage',   c.stage_score)}
-        ${bar('结构风险↓',  'risk',    c.risk_score)}
-      </div>
-      <div class="cc-analyzed-at">${c.analyzed_at ? 'analyzed ' + formatDate(c.analyzed_at) : ''}</div>
-    ` : '<div style="color:#444;font-size:0.8em;padding:8px 0">No analysis yet — run company-analyze skill</div>';
+    const barsHtml = analyzed
+      ? `<div class="cc-bars">
+          ${bar('资金安全垫', 'funding', c.funding_score)}
+          ${bar('收入确定性', 'revenue', c.revenue_score)}
+          ${bar('竞争壁垒',   'moat',    c.moat_score)}
+          ${bar('阶段规模',   'stage',   c.stage_score)}
+          ${bar('结构风险↓',  'risk',    c.risk_score)}
+        </div>`
+      : '<div style="color:#444;font-size:0.8em;padding:8px 0">No analysis yet — run company-analyze skill</div>';
+
+    let reasoningHtml = '';
+    if (analyzed && c.reasoning) {
+      let r = {};
+      try { r = typeof c.reasoning === 'string' ? JSON.parse(c.reasoning) : c.reasoning; } catch(e) {}
+      reasoningHtml = `<div class="cc-reasoning" id="cr-${cardId}" style="display:none">
+        ${c.summary ? `<div style="font-size:0.82em;color:#bbb;margin-bottom:8px">${esc(c.summary)}</div>` : ''}
+        ${r.funding ? `<div class="cc-reason-row"><span class="cc-reason-label funding">资金安全垫</span><span class="cc-reason-text">${esc(r.funding)}</span></div>` : ''}
+        ${r.revenue ? `<div class="cc-reason-row"><span class="cc-reason-label revenue">收入确定性</span><span class="cc-reason-text">${esc(r.revenue)}</span></div>` : ''}
+        ${r.moat    ? `<div class="cc-reason-row"><span class="cc-reason-label moat">竞争壁垒</span><span class="cc-reason-text">${esc(r.moat)}</span></div>` : ''}
+        ${r.stage   ? `<div class="cc-reason-row"><span class="cc-reason-label stage">阶段规模</span><span class="cc-reason-text">${esc(r.stage)}</span></div>` : ''}
+        ${r.risk    ? `<div class="cc-reason-row"><span class="cc-reason-label risk">结构风险</span><span class="cc-reason-text">${esc(r.risk)}</span></div>` : ''}
+      </div>`;
+    }
 
     const disabledBadge = !c.enabled ? ' <span class="badge-disabled">DISABLED</span>' : '';
+    const expandHint = analyzed ? `<div class="cc-expand-hint" id="hint-${cardId}">[click to expand]</div>` : '';
 
-    return `<div class="company-card" onclick="filterByCompany('${esc(c.company)}')">
+    return `<div class="company-card" id="${cardId}" onclick="toggleCompanyCard('${cardId}', event)">
       <div class="cc-header">
         <div class="cc-name">${esc(c.company)}${disabledBadge}</div>
         ${scoreHtml}
@@ -1180,6 +1214,12 @@ async function loadCompanies() {
       <div class="cc-summary">${esc(c.summary || '')}</div>
       <div class="cc-ats">${c.ats_type}${c.ats_slug ? ' / ' + esc(c.ats_slug) : ''}</div>
       ${barsHtml}
+      ${reasoningHtml}
+      ${expandHint}
+      <div class="cc-footer">
+        <span class="cc-analyzed-at">${c.analyzed_at ? 'analyzed ' + formatDate(c.analyzed_at) : ''}</span>
+        <button class="cc-jobs-btn" onclick="event.stopPropagation(); filterByCompany('${esc(c.company)}')">→ JOBS</button>
+      </div>
     </div>`;
   }).join('');
 }
@@ -1192,6 +1232,17 @@ function bar(label, cls, val) {
     <div class="cc-bar-track"><div class="cc-bar-fill ${cls}" style="width:${pct}%"></div></div>
     <div class="cc-bar-val">${val ?? '—'}</div>
   </div>`;
+}
+
+function toggleCompanyCard(cardId, event) {
+  const detail = document.getElementById('cr-' + cardId);
+  const hint = document.getElementById('hint-' + cardId);
+  const card = document.getElementById(cardId);
+  if (!detail) return;
+  const open = detail.style.display !== 'none';
+  detail.style.display = open ? 'none' : 'block';
+  if (hint) hint.textContent = open ? '[click to expand]' : '[click to collapse]';
+  if (card) card.style.borderColor = open ? '' : 'var(--cyan)';
 }
 
 function filterByCompany(company) {
