@@ -36,7 +36,9 @@ five dimensions. **You MUST use WebSearch to verify facts** — do not rely on t
 for funding, revenue, or competitive position.
 
 Research queries to run per company:
-- `"{company}" funding raised valuation 2024 2025`
+- `"{company}" stock ticker NYSE NASDAQ` — determine if publicly traded
+- If public: `"{company}" market cap 2025` — get current market cap in USD
+- If private: `"{company}" funding round raised investors 2024 2025` — get stage, total raised, top VCs
 - `"{company}" revenue ARR customers 2024`
 - `"{company}" competitors market position`
 
@@ -81,26 +83,71 @@ Research queries to run per company:
 
 ### Step 4: Produce JSON array
 
+Include financial profile fields in every entry. Use two patterns:
+
+**Public company** (has stock ticker → `is_public: 1`):
+```json
+{
+  "company": "NVIDIA",
+  "summary": "GPU巨头，AI训练推理芯片垄断地位，市值超$3T",
+  "funding_score": 10,
+  "revenue_score": 10,
+  "moat_score": 10,
+  "stage_score": 4,
+  "risk_score": 3,
+  "overall_score": 9,
+  "reasoning": {
+    "funding": "上市公司，盈利能力极强，无融资压力",
+    "revenue": "数据中心业务ARR数百亿，YoY增长超200%",
+    "moat": "CUDA生态+H100/H200垄断地位，切换成本极高",
+    "stage": "规模过大（3万员工），ML IC发挥空间受限",
+    "risk": "地缘政治出口限制，AMD/自研芯片竞争加剧"
+  },
+  "is_public": 1,
+  "market_cap_usd": 2600.0,
+  "funding_stage": null,
+  "total_raised_usd": null,
+  "notable_investors": null,
+  "analyst_model": "claude-sonnet-4-6"
+}
+```
+
+**Private company** (no ticker → `is_public: 0`):
+```json
+{
+  "company": "Harvey",
+  "summary": "面向律师事务所的AI法律助手，A16Z领投，ARR增长迅猛",
+  "funding_score": 8,
+  "revenue_score": 8,
+  "moat_score": 7,
+  "stage_score": 8,
+  "risk_score": 4,
+  "overall_score": 8,
+  "reasoning": {
+    "funding": "Series B $100M+, A16Z领投，估值超10亿，资金充裕",
+    "revenue": "律所客户付费意愿强，ARR快速增长，企业合同为主",
+    "moat": "法律领域垂直数据+专业工作流，切换成本高",
+    "stage": "约200人，产品成熟，正在扩张ML团队",
+    "risk": "法律合规监管风险存在，但律所市场相对稳定"
+  },
+  "is_public": 0,
+  "market_cap_usd": null,
+  "funding_stage": "Series B",
+  "total_raised_usd": 206.0,
+  "notable_investors": ["a16z", "Sequoia", "OpenAI Fund"],
+  "analyst_model": "claude-sonnet-4-6"
+}
+```
+
+Use `null` for fields that don't apply or couldn't be verified.
+`market_cap_usd` is in **Billion USD** (e.g. 2600.0 = $2.6T).
+`total_raised_usd` is in **Million USD** (e.g. 206.0 = $206M; 1100.0 = $1.1B).
+
+Full JSON array format:
 ```json
 [
-  {
-    "company": "Harvey",
-    "summary": "面向律师事务所的AI法律助手，A16Z领投，ARR增长迅猛",
-    "funding_score": 8,
-    "revenue_score": 8,
-    "moat_score": 7,
-    "stage_score": 8,
-    "risk_score": 4,
-    "overall_score": 8,
-    "reasoning": {
-      "funding": "Series B $100M+, A16Z领投，估值超10亿，资金充裕",
-      "revenue": "律所客户付费意愿强，ARR快速增长，企业合同为主",
-      "moat": "法律领域垂直数据+专业工作流，切换成本高",
-      "stage": "约200人，产品成熟，正在扩张ML团队",
-      "risk": "法律合规监管风险存在，但律所市场相对稳定"
-    },
-    "analyst_model": "claude-sonnet-4-6"
-  }
+  { ...company1... },
+  { ...company2... }
 ]
 ```
 

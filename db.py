@@ -93,6 +93,18 @@ def _init_tables(conn):
         if col not in cols:
             conn.execute(f"ALTER TABLE jobs ADD COLUMN {col} {typedef}")
     conn.commit()
+    # Migration: add financial profile columns to company_analysis
+    ca_cols = {r[1] for r in conn.execute("PRAGMA table_info(company_analysis)").fetchall()}
+    for col, typedef in [
+        ("is_public",         "INTEGER DEFAULT NULL"),
+        ("market_cap_usd",    "REAL DEFAULT NULL"),
+        ("funding_stage",     "TEXT DEFAULT NULL"),
+        ("total_raised_usd",  "REAL DEFAULT NULL"),
+        ("notable_investors", "TEXT DEFAULT NULL"),
+    ]:
+        if col not in ca_cols:
+            conn.execute(f"ALTER TABLE company_analysis ADD COLUMN {col} {typedef}")
+    conn.commit()
     _seed_watchlist(conn)
 
 

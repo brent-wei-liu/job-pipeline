@@ -673,6 +673,18 @@
   .cc-reason-label.risk    { color: #ff4444; }
   .cc-reason-text { color: #999; line-height: 1.4; }
   .cc-expand-hint { font-size: 0.68em; color: #333; margin-top: 6px; text-align: center; }
+  /* Financial profile */
+  .cc-finance { margin: 8px 0 2px; padding-top: 7px; border-top: 1px solid #111; }
+  .cc-cap-marks { display: flex; justify-content: space-between; font-size: 0.58em; color: #2a2a2a; font-family: 'Share Tech Mono', monospace; margin-bottom: 1px; }
+  .cc-cap-rail { height: 1px; background: #1c1c1c; margin-bottom: 0; }
+  .cc-cap-ptr-row { position: relative; height: 20px; overflow: visible; }
+  .cc-cap-ptr { position: absolute; transform: translateX(-50%); font-family: 'Orbitron', sans-serif; font-size: 0.6em; color: var(--cyan); white-space: nowrap; line-height: 1.5; text-align: center; }
+  .cc-tier-badge { display: inline-block; border: 1px solid; padding: 1px 5px; font-family: 'Share Tech Mono', monospace; font-size: 0.6em; margin-top: 3px; }
+  .cc-stage-line { display: flex; align-items: center; flex-wrap: wrap; gap: 0; font-size: 0.78em; }
+  .cc-stage-badge { border: 1px solid; padding: 1px 6px; font-family: 'Share Tech Mono', monospace; }
+  .cc-raised { color: #aaa; }
+  .cc-fin-sep { color: #333; margin: 0 6px; }
+  .cc-investors { font-size: 0.72em; color: #555; margin-top: 3px; }
 </style>
 </head>
 <body>
@@ -1244,6 +1256,7 @@ async function loadCompanies() {
 
     const disabledBadge = !c.enabled ? ' <span class="badge-disabled">DISABLED</span>' : '';
     const expandHint = analyzed ? `<div class="cc-expand-hint" id="hint-${cardId}">[click to expand]</div>` : '';
+    const financeHtml = analyzed ? buildFinanceHtml(c) : '';
 
     return `<div class="company-card" id="${cardId}" data-company="${esc(c.company)}" onclick="toggleCompanyCard('${cardId}', event)">
       <div class="cc-header">
@@ -1253,6 +1266,7 @@ async function loadCompanies() {
       <div class="cc-summary">${esc(c.summary || '')}</div>
       <div class="cc-ats">${c.ats_type}${c.ats_slug ? ' / ' + esc(c.ats_slug) : ''}</div>
       ${barsHtml}
+      ${financeHtml}
       ${reasoningHtml}
       ${expandHint}
       <div class="cc-footer">
@@ -1280,6 +1294,60 @@ function bar(label, val, isRisk) {
     <div class="cc-bar-track"><div class="cc-bar-fill ${cls}" style="width:${pct}%"></div></div>
     <div class="cc-bar-val">${val ?? '—'}</div>
   </div>`;
+}
+
+function buildFinanceHtml(c) {
+  if (c.is_public === 1 && c.market_cap_usd != null) {
+    const cap = c.market_cap_usd;
+    // log10 scale: $1B (cap=1) → 0%, $10B → 33%, $100B → 67%, $1T (cap=1000) → 100%
+    const pct = Math.min(95, Math.max(2, Math.log10(Math.max(0.1, cap)) / 3 * 100)).toFixed(1);
+    const capStr = cap >= 1000 ? `$${(cap/1000).toFixed(1)}T`
+                 : cap >= 1   ? `$${Math.round(cap)}B`
+                 : `$${(cap*1000).toFixed(0)}M`;
+    const [tierLabel, tierColor] =
+      cap >= 200 ? ['MEGA-CAP',  '#9b5de5'] :
+      cap >= 10  ? ['LARGE-CAP', '#00ff41'] :
+      cap >= 2   ? ['MID-CAP',   '#f0c040'] :
+                   ['SMALL-CAP', '#555555'];
+    return `<div class="cc-finance">
+      <div class="cc-cap-marks"><span>$1B</span><span>$10B</span><span>$100B</span><span>$1T</span></div>
+      <div class="cc-cap-rail"></div>
+      <div class="cc-cap-ptr-row"><div class="cc-cap-ptr" style="left:${pct}%">▼ ${capStr}</div></div>
+      <span class="cc-tier-badge" style="color:${tierColor};border-color:${tierColor}">${tierLabel}</span>
+    </div>`;
+  } else if (c.is_public === 0) {
+    const parts = [];
+    const stageColor =
+      /seed/i.test(c.funding_stage||'')      ? '#4499ff' :
+      /\bA\b|\bB\b/.test(c.funding_stage||'') ? '#00ff41' :
+      /\bC\b|\bD\b/.test(c.funding_stage||'') ? '#f0c040' :
+      /pre.?ipo/i.test(c.funding_stage||'')   ? '#ffd700' :
+      /[EFG]|growth/i.test(c.funding_stage||'') ? '#a080ff' : '#888888';
+    if (c.funding_stage)
+      parts.push(`<span class="cc-stage-badge" style="color:${stageColor};border-color:${stageColor}">${esc(c.funding_stage)}</span>`);
+    if (c.total_raised_usd != null) {
+      const raised = c.total_raised_usd >= 1000
+        ? `$${(c.total_raised_usd/1000).toFixed(1)}B raised`
+        : `$${Math.round(c.total_raised_usd)}M raised`;
+      parts.push(`<span class="cc-raised">${raised}</span>`);
+    }
+    if (!parts.length) return '';
+    let investorsHtml = '';
+    try {
+      const inv = typeof c.notable_investors === 'string'
+        ? JSON.parse(c.notable_investors || 'null') : c.notable_investors;
+      if (Array.isArray(inv) && inv.length) {
+        const shown = inv.slice(0, 3).map(esc).join(' · ');
+        const extra = inv.length > 3 ? ` <span style="color:#333">+${inv.length-3} more</span>` : '';
+        investorsHtml = `<div class="cc-investors">${shown}${extra}</div>`;
+      }
+    } catch(e) {}
+    return `<div class="cc-finance">
+      <div class="cc-stage-line">${parts.join('<span class="cc-fin-sep"> • </span>')}</div>
+      ${investorsHtml}
+    </div>`;
+  }
+  return '';
 }
 
 function toggleCompanyCard(cardId, event) {

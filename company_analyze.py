@@ -33,6 +33,11 @@ JSON format for --save:
       "stage": "...",
       "risk": "..."
     },
+    "is_public": 0,
+    "market_cap_usd": null,
+    "funding_stage": "Series B",
+    "total_raised_usd": 206.0,
+    "notable_investors": ["a16z", "Sequoia", "OpenAI Fund"],
     "analyst_model": "claude-sonnet-4-6"
   }
 ]
@@ -102,11 +107,15 @@ def cmd_save(conn):
         reasoning = e.get("reasoning", {})
         if isinstance(reasoning, dict):
             reasoning = json.dumps(reasoning, ensure_ascii=False)
+        notable_investors = e.get("notable_investors")
+        if isinstance(notable_investors, list):
+            notable_investors = json.dumps(notable_investors, ensure_ascii=False)
         conn.execute("""
             INSERT INTO company_analysis
                 (company, summary, funding_score, revenue_score, moat_score,
-                 stage_score, risk_score, overall_score, reasoning, analyzed_at, analyst_model)
-            VALUES (?,?,?,?,?,?,?,?,?,datetime('now'),?)
+                 stage_score, risk_score, overall_score, reasoning, analyzed_at, analyst_model,
+                 is_public, market_cap_usd, funding_stage, total_raised_usd, notable_investors)
+            VALUES (?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?,?,?)
             ON CONFLICT(company) DO UPDATE SET
                 summary=excluded.summary,
                 funding_score=excluded.funding_score,
@@ -117,7 +126,12 @@ def cmd_save(conn):
                 overall_score=excluded.overall_score,
                 reasoning=excluded.reasoning,
                 analyzed_at=excluded.analyzed_at,
-                analyst_model=excluded.analyst_model
+                analyst_model=excluded.analyst_model,
+                is_public=excluded.is_public,
+                market_cap_usd=excluded.market_cap_usd,
+                funding_stage=excluded.funding_stage,
+                total_raised_usd=excluded.total_raised_usd,
+                notable_investors=excluded.notable_investors
         """, (
             company,
             e.get("summary"),
@@ -129,6 +143,11 @@ def cmd_save(conn):
             e.get("overall_score"),
             reasoning,
             e.get("analyst_model"),
+            e.get("is_public"),
+            e.get("market_cap_usd"),
+            e.get("funding_stage"),
+            e.get("total_raised_usd"),
+            notable_investors,
         ))
         saved += 1
     conn.commit()

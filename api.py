@@ -274,7 +274,9 @@ def list_companies():
         SELECT w.company, w.ats_type, w.ats_slug, w.enabled,
                ca.summary, ca.funding_score, ca.revenue_score, ca.moat_score,
                ca.stage_score, ca.risk_score, ca.overall_score,
-               ca.reasoning, ca.analyzed_at, ca.analyst_model
+               ca.reasoning, ca.analyzed_at, ca.analyst_model,
+               ca.is_public, ca.market_cap_usd, ca.funding_stage,
+               ca.total_raised_usd, ca.notable_investors
         FROM watchlist w
         LEFT JOIN company_analysis ca ON ca.company = w.company
         ORDER BY ca.overall_score DESC NULLS LAST, w.company ASC
@@ -286,7 +288,9 @@ def list_companies():
 _ANALYZE_PROMPT = """You are a company analyst. Research the company "{company}" and score it across five dimensions for a senior ML engineer evaluating job opportunities.
 
 Use WebSearch to find current information on:
-- Latest funding round, valuation, total raised
+- Whether the company is publicly traded (search for its stock ticker)
+- If public: current market cap in USD
+- If private: latest funding round stage, total raised, top investors
 - Revenue / ARR, key customers
 - Competitive position and main competitors
 - Employee count and growth stage
@@ -300,8 +304,15 @@ Score each dimension 1-10:
 5. risk_score: structural risk — HIGHER = WORSE (10=existential risk, 1=very stable)
 overall_score: weighted avg: funding×0.25 + revenue×0.25 + moat×0.20 + stage×0.20 + (10-risk)×0.10, round to integer.
 
+Financial profile fields:
+- is_public: 1 if publicly traded, 0 if private, null if unknown
+- market_cap_usd: public companies only — market cap in Billion USD (e.g. 2600.0 for $2.6T), null otherwise
+- funding_stage: private companies only — latest round (Seed/A/B/C/D/E/Growth/Pre-IPO), null otherwise
+- total_raised_usd: private companies only — total raised in Million USD (e.g. 1100.0 for $1.1B), null otherwise
+- notable_investors: private companies only — JSON array of top 3 investor names, null otherwise
+
 Output ONLY a single JSON object (no markdown, no explanation):
-{{"company":"{company}","summary":"一句话中文简介","funding_score":N,"revenue_score":N,"moat_score":N,"stage_score":N,"risk_score":N,"overall_score":N,"reasoning":{{"funding":"...","revenue":"...","moat":"...","stage":"...","risk":"..."}},"analyst_model":"claude-sonnet-4-6"}}"""
+{{"company":"{company}","summary":"一句话中文简介","funding_score":N,"revenue_score":N,"moat_score":N,"stage_score":N,"risk_score":N,"overall_score":N,"reasoning":{{"funding":"...","revenue":"...","moat":"...","stage":"...","risk":"..."}},"is_public":1,"market_cap_usd":2600.0,"funding_stage":null,"total_raised_usd":null,"notable_investors":null,"analyst_model":"claude-sonnet-4-6"}}"""
 
 CLAUDE_CLI = "/Users/little_claw/.local/bin/claude"
 ANALYZE_TIMEOUT = 90  # seconds
@@ -357,22 +368,32 @@ def analyze_company(company: str):
     if isinstance(reasoning, dict):
         reasoning = json.dumps(reasoning, ensure_ascii=False)
 
+    notable_investors = data.get("notable_investors")
+    if isinstance(notable_investors, list):
+        notable_investors = json.dumps(notable_investors, ensure_ascii=False)
+
     # Upsert into company_analysis
     conn.execute("""
         INSERT INTO company_analysis
             (company, summary, funding_score, revenue_score, moat_score,
-             stage_score, risk_score, overall_score, reasoning, analyzed_at, analyst_model)
-        VALUES (?,?,?,?,?,?,?,?,?,datetime('now'),?)
+             stage_score, risk_score, overall_score, reasoning, analyzed_at, analyst_model,
+             is_public, market_cap_usd, funding_stage, total_raised_usd, notable_investors)
+        VALUES (?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?,?,?)
         ON CONFLICT(company) DO UPDATE SET
             summary=excluded.summary, funding_score=excluded.funding_score,
             revenue_score=excluded.revenue_score, moat_score=excluded.moat_score,
             stage_score=excluded.stage_score, risk_score=excluded.risk_score,
             overall_score=excluded.overall_score, reasoning=excluded.reasoning,
-            analyzed_at=excluded.analyzed_at, analyst_model=excluded.analyst_model
+            analyzed_at=excluded.analyzed_at, analyst_model=excluded.analyst_model,
+            is_public=excluded.is_public, market_cap_usd=excluded.market_cap_usd,
+            funding_stage=excluded.funding_stage, total_raised_usd=excluded.total_raised_usd,
+            notable_investors=excluded.notable_investors
     """, (
         company, data.get("summary"), data.get("funding_score"), data.get("revenue_score"),
         data.get("moat_score"), data.get("stage_score"), data.get("risk_score"),
         data.get("overall_score"), reasoning, data.get("analyst_model", "claude-sonnet-4-6"),
+        data.get("is_public"), data.get("market_cap_usd"), data.get("funding_stage"),
+        data.get("total_raised_usd"), notable_investors,
     ))
     conn.commit()
     row = conn.execute("SELECT * FROM company_analysis WHERE company = ?", (company,)).fetchone()
