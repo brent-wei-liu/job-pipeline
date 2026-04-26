@@ -611,6 +611,38 @@
     }
     .sub-row .notes-input { margin-top: 4px; width: 100%; }
   }
+
+  /* ── Company cards ───────────────────────────────────────────────────── */
+  .companies-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 16px; padding: 16px;
+  }
+  .company-card {
+    background: rgba(0,0,0,0.4); border: 1px solid var(--border);
+    padding: 14px 16px; cursor: pointer; transition: border-color 0.15s;
+  }
+  .company-card:hover { border-color: var(--cyan); }
+  .cc-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .cc-name { font-family: 'Orbitron', sans-serif; font-size: 0.82em; color: var(--cyan); letter-spacing: 0.05em; }
+  .cc-overall { font-family: 'Orbitron', sans-serif; font-size: 1.4em; font-weight: 700;
+    color: var(--green); text-shadow: 0 0 8px rgba(0,255,65,0.5); }
+  .cc-overall.pending { color: #555; font-size: 0.8em; letter-spacing: 0.05em; }
+  .cc-summary { font-size: 0.8em; color: #999; margin-bottom: 8px; min-height: 2.2em; }
+  .cc-ats { font-size: 0.7em; color: #444; margin-bottom: 10px; }
+  .cc-bars { display: flex; flex-direction: column; gap: 5px; }
+  .cc-bar-row { display: flex; align-items: center; gap: 8px; font-size: 0.74em; }
+  .cc-bar-label { width: 78px; color: #666; flex-shrink: 0; }
+  .cc-bar-track { flex: 1; height: 6px; background: #111; border: 1px solid #222; }
+  .cc-bar-fill { height: 100%; }
+  .cc-bar-val { width: 18px; text-align: right; color: #777; }
+  .cc-bar-fill.funding { background: #00fff2; box-shadow: 0 0 4px rgba(0,255,242,0.4); }
+  .cc-bar-fill.revenue { background: #00ff41; box-shadow: 0 0 4px rgba(0,255,65,0.4); }
+  .cc-bar-fill.moat    { background: #f0c040; box-shadow: 0 0 4px rgba(240,192,64,0.4); }
+  .cc-bar-fill.stage   { background: #a080ff; box-shadow: 0 0 4px rgba(160,128,255,0.4); }
+  .cc-bar-fill.risk    { background: #ff4444; box-shadow: 0 0 4px rgba(255,68,68,0.4); }
+  .cc-analyzed-at { font-size: 0.7em; color: #333; margin-top: 10px; }
+  .badge-disabled { background: #1a1a1a; color: #444; padding: 1px 6px; font-size: 0.7em; border: 1px solid #333; }
 </style>
 </head>
 <body>
@@ -625,6 +657,7 @@
   <button onclick="switchTab('stats')">STATS</button>
   <button onclick="switchTab('runs')">SEARCH RUNS</button>
   <button onclick="switchTab('digests')">DIGESTS</button>
+  <button onclick="switchTab('companies')">COMPANIES</button>
 </div>
 
 <div class="content">
@@ -710,6 +743,23 @@
   <div id="tab-digests" style="display:none">
     <div id="digests-content"></div>
   </div>
+
+  <!-- COMPANIES TAB -->
+  <div id="tab-companies" style="display:none">
+    <div class="controls">
+      <select id="filter-company-enabled" onchange="loadCompanies()">
+        <option value="">ALL</option>
+        <option value="1" selected>ENABLED</option>
+        <option value="0">DISABLED</option>
+      </select>
+      <select id="filter-company-analyzed" onchange="loadCompanies()">
+        <option value="">ALL</option>
+        <option value="yes">ANALYZED</option>
+        <option value="no">PENDING</option>
+      </select>
+    </div>
+    <div id="companies-grid"></div>
+  </div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -749,6 +799,7 @@ function switchTab(tab) {
   if (tab === 'stats') loadStats();
   if (tab === 'runs') loadRuns();
   if (tab === 'digests') loadDigests();
+  if (tab === 'companies') loadCompanies();
 }
 
 // ── Jobs ───────────────────────────────────────────────────────────────
@@ -1081,6 +1132,78 @@ function toggleDigest(id) {
     body.style.display = 'none';
     toggle.textContent = '[+]';
   }
+}
+
+// ── Companies ──────────────────────────────────────────────────────────
+async function loadCompanies() {
+  const res = await fetch('/api/companies');
+  const data = await res.json();
+  let companies = data.companies || [];
+
+  const enabledFilter = document.getElementById('filter-company-enabled').value;
+  const analyzedFilter = document.getElementById('filter-company-analyzed').value;
+  if (enabledFilter !== '') companies = companies.filter(c => String(c.enabled) === enabledFilter);
+  if (analyzedFilter === 'yes') companies = companies.filter(c => c.overall_score != null);
+  if (analyzedFilter === 'no')  companies = companies.filter(c => c.overall_score == null);
+
+  const grid = document.getElementById('companies-grid');
+  if (!companies.length) {
+    grid.innerHTML = '<div style="color:#666;padding:20px">No companies match filter.</div>';
+    return;
+  }
+
+  grid.className = 'companies-grid';
+  grid.innerHTML = companies.map(c => {
+    const analyzed = c.overall_score != null;
+    const scoreHtml = analyzed
+      ? `<div class="cc-overall">${c.overall_score}</div>`
+      : `<div class="cc-overall pending">PENDING</div>`;
+
+    const barsHtml = analyzed ? `
+      <div class="cc-bars">
+        ${bar('资金安全垫', 'funding', c.funding_score)}
+        ${bar('收入确定性', 'revenue', c.revenue_score)}
+        ${bar('竞争壁垒',   'moat',    c.moat_score)}
+        ${bar('阶段规模',   'stage',   c.stage_score)}
+        ${bar('结构风险↓',  'risk',    c.risk_score)}
+      </div>
+      <div class="cc-analyzed-at">${c.analyzed_at ? 'analyzed ' + formatDate(c.analyzed_at) : ''}</div>
+    ` : '<div style="color:#444;font-size:0.8em;padding:8px 0">No analysis yet — run company-analyze skill</div>';
+
+    const disabledBadge = !c.enabled ? ' <span class="badge-disabled">DISABLED</span>' : '';
+
+    return `<div class="company-card" onclick="filterByCompany('${esc(c.company)}')">
+      <div class="cc-header">
+        <div class="cc-name">${esc(c.company)}${disabledBadge}</div>
+        ${scoreHtml}
+      </div>
+      <div class="cc-summary">${esc(c.summary || '')}</div>
+      <div class="cc-ats">${c.ats_type}${c.ats_slug ? ' / ' + esc(c.ats_slug) : ''}</div>
+      ${barsHtml}
+    </div>`;
+  }).join('');
+}
+
+function bar(label, cls, val) {
+  const v = val ?? 0;
+  const pct = (v / 10 * 100).toFixed(0);
+  return `<div class="cc-bar-row">
+    <div class="cc-bar-label">${label}</div>
+    <div class="cc-bar-track"><div class="cc-bar-fill ${cls}" style="width:${pct}%"></div></div>
+    <div class="cc-bar-val">${val ?? '—'}</div>
+  </div>`;
+}
+
+function filterByCompany(company) {
+  // Switch to jobs tab and filter by company name
+  document.querySelectorAll('.nav button').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.nav button').forEach(b => {
+    if (b.textContent === 'JOBS') b.classList.add('active');
+  });
+  document.querySelectorAll('.content > div').forEach(d => d.style.display = 'none');
+  document.getElementById('tab-jobs').style.display = 'block';
+  document.getElementById('search').value = company;
+  loadJobs();
 }
 
 // ── Init ───────────────────────────────────────────────────────────────

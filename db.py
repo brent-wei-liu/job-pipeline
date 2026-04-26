@@ -63,6 +63,21 @@ def _init_tables(conn):
         keywords    TEXT DEFAULT NULL,
         last_run_at TEXT DEFAULT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS company_analysis (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        company         TEXT NOT NULL UNIQUE,
+        summary         TEXT,
+        funding_score   INTEGER,
+        revenue_score   INTEGER,
+        moat_score      INTEGER,
+        stage_score     INTEGER,
+        risk_score      INTEGER,
+        overall_score   INTEGER,
+        reasoning       TEXT,
+        analyzed_at     TEXT NOT NULL DEFAULT (datetime('now')),
+        analyst_model   TEXT
+    );
     """)
     # Migration: add match score columns if missing
     cols = {r[1] for r in conn.execute("PRAGMA table_info(jobs)").fetchall()}

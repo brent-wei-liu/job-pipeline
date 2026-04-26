@@ -266,6 +266,36 @@ def list_summaries(limit: int = Query(30, ge=1, le=100)):
     return {"summaries": [dict(r) for r in rows], "total": len(rows)}
 
 
+# ── Companies API ────────────────────────────────────────────────────────────
+@app.get("/api/companies")
+def list_companies():
+    conn = get_conn()
+    rows = conn.execute("""
+        SELECT w.company, w.ats_type, w.ats_slug, w.enabled,
+               ca.summary, ca.funding_score, ca.revenue_score, ca.moat_score,
+               ca.stage_score, ca.risk_score, ca.overall_score,
+               ca.reasoning, ca.analyzed_at, ca.analyst_model
+        FROM watchlist w
+        LEFT JOIN company_analysis ca ON ca.company = w.company
+        ORDER BY ca.overall_score DESC NULLS LAST, w.company ASC
+    """).fetchall()
+    conn.close()
+    return {"companies": [dict(r) for r in rows], "total": len(rows)}
+
+
+@app.post("/api/companies/{company}/analyze")
+def trigger_company_analyze(company: str):
+    """Placeholder: returns the company record so the skill can pick it up."""
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT company, ats_type FROM watchlist WHERE company = ?", (company,)
+    ).fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(404, f"Company '{company}' not found in watchlist")
+    return {"pending": [dict(row)], "message": "Run the company-analyze skill to process this company"}
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8080)
