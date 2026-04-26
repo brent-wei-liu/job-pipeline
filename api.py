@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Job Pipeline — FastAPI backend."""
-import sys
+import sys, json, re, subprocess
 from pathlib import Path
 from datetime import datetime
 from typing import List, Optional
@@ -283,17 +283,101 @@ def list_companies():
     return {"companies": [dict(r) for r in rows], "total": len(rows)}
 
 
+_ANALYZE_PROMPT = """You are a company analyst. Research the company "{company}" and score it across five dimensions for a senior ML engineer evaluating job opportunities.
+
+Use WebSearch to find current information on:
+- Latest funding round, valuation, total raised
+- Revenue / ARR, key customers
+- Competitive position and main competitors
+- Employee count and growth stage
+- Any recent risks (layoffs, pivots, regulatory issues)
+
+Score each dimension 1-10:
+1. funding_score: runway/financial cushion (10=profitable/well-funded, 1=distressed)
+2. revenue_score: revenue predictability (10=clear ARR+enterprise contracts, 1=no revenue)
+3. moat_score: competitive defensibility (10=strong moat, 1=commodity)
+4. stage_score: stage fit for senior ML IC (10=50-500 people scaling ML, 1=too early/too large/wrong domain)
+5. risk_score: structural risk — HIGHER = WORSE (10=existential risk, 1=very stable)
+overall_score: weighted avg: funding×0.25 + revenue×0.25 + moat×0.20 + stage×0.20 + (10-risk)×0.10, round to integer.
+
+Output ONLY a single JSON object (no markdown, no explanation):
+{{"company":"{company}","summary":"一句话中文简介","funding_score":N,"revenue_score":N,"moat_score":N,"stage_score":N,"risk_score":N,"overall_score":N,"reasoning":{{"funding":"...","revenue":"...","moat":"...","stage":"...","risk":"..."}},"analyst_model":"claude-sonnet-4-6"}}"""
+
+CLAUDE_CLI = "/Users/little_claw/.local/bin/claude"
+ANALYZE_TIMEOUT = 90  # seconds
+
+
 @app.post("/api/companies/{company}/analyze")
-def trigger_company_analyze(company: str):
-    """Placeholder: returns the company record so the skill can pick it up."""
+def analyze_company(company: str):
     conn = get_conn()
-    row = conn.execute(
-        "SELECT company, ats_type FROM watchlist WHERE company = ?", (company,)
+
+    # 1-hour cache
+    cached = conn.execute(
+        "SELECT * FROM company_analysis WHERE company = ? AND analyzed_at > datetime('now', '-1 hour')",
+        (company,)
     ).fetchone()
+    if cached:
+        conn.close()
+        return {"cached": True, **dict(cached)}
+
+    # Spawn claude CLI
+    prompt = _ANALYZE_PROMPT.format(company=company)
+    try:
+        result = subprocess.run(
+            [CLAUDE_CLI, "-p", "--model", "claude-sonnet-4-6", prompt],
+            capture_output=True, text=True, timeout=ANALYZE_TIMEOUT,
+        )
+        raw = result.stdout.strip()
+    except subprocess.TimeoutExpired:
+        conn.close()
+        raise HTTPException(504, "Analysis timed out after 90s")
+    except Exception as e:
+        conn.close()
+        raise HTTPException(500, f"CLI error: {e}")
+
+    # Extract JSON — strip any surrounding prose
+    json_match = re.search(r'\{[\s\S]*\}', raw)
+    if not json_match:
+        conn.close()
+        raise HTTPException(502, f"No JSON in response: {raw[:200]}")
+    try:
+        data = json.loads(json_match.group())
+    except json.JSONDecodeError as e:
+        conn.close()
+        raise HTTPException(502, f"JSON parse error: {e} — raw: {raw[:200]}")
+
+    # Validate required fields
+    required = {"funding_score", "revenue_score", "moat_score", "stage_score", "risk_score", "overall_score"}
+    missing = required - data.keys()
+    if missing:
+        conn.close()
+        raise HTTPException(502, f"Missing fields: {missing}")
+
+    reasoning = data.get("reasoning", {})
+    if isinstance(reasoning, dict):
+        reasoning = json.dumps(reasoning, ensure_ascii=False)
+
+    # Upsert into company_analysis
+    conn.execute("""
+        INSERT INTO company_analysis
+            (company, summary, funding_score, revenue_score, moat_score,
+             stage_score, risk_score, overall_score, reasoning, analyzed_at, analyst_model)
+        VALUES (?,?,?,?,?,?,?,?,?,datetime('now'),?)
+        ON CONFLICT(company) DO UPDATE SET
+            summary=excluded.summary, funding_score=excluded.funding_score,
+            revenue_score=excluded.revenue_score, moat_score=excluded.moat_score,
+            stage_score=excluded.stage_score, risk_score=excluded.risk_score,
+            overall_score=excluded.overall_score, reasoning=excluded.reasoning,
+            analyzed_at=excluded.analyzed_at, analyst_model=excluded.analyst_model
+    """, (
+        company, data.get("summary"), data.get("funding_score"), data.get("revenue_score"),
+        data.get("moat_score"), data.get("stage_score"), data.get("risk_score"),
+        data.get("overall_score"), reasoning, data.get("analyst_model", "claude-sonnet-4-6"),
+    ))
+    conn.commit()
+    row = conn.execute("SELECT * FROM company_analysis WHERE company = ?", (company,)).fetchone()
     conn.close()
-    if not row:
-        raise HTTPException(404, f"Company '{company}' not found in watchlist")
-    return {"pending": [dict(row)], "message": "Run the company-analyze skill to process this company"}
+    return {"cached": False, **dict(row)}
 
 
 if __name__ == "__main__":
