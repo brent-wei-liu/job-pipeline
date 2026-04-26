@@ -755,6 +755,9 @@
         <tbody id="jobs-body"></tbody>
       </table>
     </div>
+    <div id="load-more-bar" style="display:none;text-align:center;padding:14px 0 6px">
+      <button onclick="loadJobs(true)" style="font-family:'Share Tech Mono',monospace;background:none;border:1px solid #333;color:#555;padding:7px 28px;cursor:pointer;letter-spacing:0.05em">[ LOAD MORE ]</button>
+    </div>
   </div>
 
   <!-- STATS TAB -->
@@ -813,6 +816,10 @@
 // ── State ──────────────────────────────────────────────────────────────
 let currentSort = 'fetched_at';
 let analyzedCompanies = new Set(); // companies with fresh analysis
+const jobDetailCache = new Map();  // id → full job data (jd_text + match fields), for lazy expand
+let jobsOffset = 0;
+let jobsHasMore = false;
+const JOBS_PAGE_SIZE = 100;
 let currentOrder = 'desc';
 let debounceTimer = null;
 let debounceCompanyTimer = null;
@@ -869,11 +876,14 @@ function sortBy(col) {
   loadJobs();
 }
 
-async function loadJobs() {
+async function loadJobs(append = false) {
+  if (!append) jobsOffset = 0;
   const params = new URLSearchParams({
     days: document.getElementById('filter-days').value,
     sort: currentSort,
     order: currentOrder,
+    limit: JOBS_PAGE_SIZE,
+    offset: jobsOffset,
   });
   const status = document.getElementById('filter-status').value;
   const starred = document.getElementById('filter-starred').value;
@@ -888,7 +898,10 @@ async function loadJobs() {
 
   const res = await fetch('/api/jobs?' + params);
   const data = await res.json();
-  renderJobs(data.jobs);
+  jobsHasMore = data.has_more;
+  jobsOffset += data.jobs.length;
+  renderJobs(data.jobs, append);
+  document.getElementById('load-more-bar').style.display = jobsHasMore ? 'block' : 'none';
 }
 
 function scoreClass(s) {
@@ -922,11 +935,10 @@ function renderMatchDetail(j) {
   return html;
 }
 
-function renderJobs(jobs) {
-  selectedIds.clear();
-  updateBulkBar();
+function renderJobs(jobs, append = false) {
+  if (!append) { selectedIds.clear(); updateBulkBar(); }
   const tbody = document.getElementById('jobs-body');
-  tbody.innerHTML = jobs.map(j => `
+  const html = jobs.map(j => `
     <tr class="job-row" id="row-${j.id}">
       <td>
         <input type="checkbox" class="job-cb" data-id="${j.id}"
@@ -975,16 +987,14 @@ function renderJobs(jobs) {
       </td>
     </tr>
     <tr id="match-row-${j.id}" style="display:none">
-      <td colspan="9">
-        ${renderMatchDetail(j)}
-      </td>
+      <td colspan="9"></td>
     </tr>
     <tr id="jd-row-${j.id}" style="display:none">
-      <td colspan="9">
-        <div class="jd-panel open">${esc(j.jd_text || 'No JD available')}</div>
-      </td>
+      <td colspan="9"></td>
     </tr>
   `).join('');
+  if (append) tbody.insertAdjacentHTML('beforeend', html);
+  else tbody.innerHTML = html;
 }
 
 async function toggleStar(id) {
@@ -1056,14 +1066,37 @@ function deleteJob(id) {
   }
 }
 
-function toggleMatch(id) {
-  const row = document.getElementById('match-row-' + id);
-  if (row) row.style.display = row.style.display === 'none' ? '' : 'none';
+async function getJobDetail(id) {
+  if (jobDetailCache.has(id)) return jobDetailCache.get(id);
+  const detail = await fetch(`/api/jobs/${id}`).then(r => r.json());
+  jobDetailCache.set(id, detail);
+  return detail;
 }
 
-function toggleJD(id) {
+async function toggleMatch(id) {
+  const row = document.getElementById('match-row-' + id);
+  if (!row) return;
+  if (row.style.display !== 'none') { row.style.display = 'none'; return; }
+  const cell = row.querySelector('td');
+  if (!cell.dataset.loaded) {
+    const detail = await getJobDetail(id);
+    cell.innerHTML = renderMatchDetail(detail);
+    cell.dataset.loaded = '1';
+  }
+  row.style.display = '';
+}
+
+async function toggleJD(id) {
   const row = document.getElementById('jd-row-' + id);
-  row.style.display = row.style.display === 'none' ? '' : 'none';
+  if (!row) return;
+  if (row.style.display !== 'none') { row.style.display = 'none'; return; }
+  const cell = row.querySelector('td');
+  if (!cell.dataset.loaded) {
+    const detail = await getJobDetail(id);
+    cell.innerHTML = `<div class="jd-panel open">${esc(detail.jd_text || 'No JD available')}</div>`;
+    cell.dataset.loaded = '1';
+  }
+  row.style.display = '';
 }
 
 // ── Stats ──────────────────────────────────────────────────────────────

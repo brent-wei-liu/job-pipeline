@@ -45,9 +45,15 @@ def list_jobs(
     min_score: Optional[int] = Query(None),
     sort: str = Query("fetched_at"),
     order: str = Query("desc"),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
 ):
     conn = get_conn()
-    sql = "SELECT * FROM jobs WHERE fetched_at > datetime('now', ?)"
+    # Exclude large fields (jd_text, match_reasons, match_gaps) — fetch lazily via GET /api/jobs/{id}
+    sql = """SELECT id, linkedin_id, company, position, url, status, reject_reason,
+                    notion_page_id, starred, notes, applied_at, fetched_at, source,
+                    match_score, match_summary, agentic_ai_relevant, scored_at
+             FROM jobs WHERE fetched_at > datetime('now', ?)"""
     params = [f"-{days} days"]
 
     if status:
@@ -75,12 +81,13 @@ def list_jobs(
     if sort not in allowed_sorts:
         sort = "fetched_at"
     order_dir = "DESC" if order.lower() == "desc" else "ASC"
-    sql += f" ORDER BY {sort} {order_dir}"
+    sql += f" ORDER BY {sort} {order_dir} LIMIT ? OFFSET ?"
 
-    rows = conn.execute(sql, params).fetchall()
-    jobs = [dict(r) for r in rows]
+    rows = conn.execute(sql, params + [limit + 1, offset]).fetchall()
+    has_more = len(rows) > limit
+    jobs = [dict(r) for r in rows[:limit]]
     conn.close()
-    return {"jobs": jobs, "total": len(jobs)}
+    return {"jobs": jobs, "total": len(jobs), "has_more": has_more, "offset": offset}
 
 
 class BulkDeleteBody(BaseModel):
