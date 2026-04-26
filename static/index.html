@@ -213,6 +213,10 @@
   }
 
   .company { color: var(--cyan); font-weight: bold; }
+  .company-link { cursor: pointer; }
+  .company-link:hover { text-decoration: underline; }
+  @keyframes cardGlow { 0%,100%{box-shadow:none} 50%{box-shadow:0 0 16px rgba(0,255,242,0.6)} }
+  .card-highlight { animation: cardGlow 0.8s ease 2; }
   .position { color: var(--text); max-width: 350px; }
   .date { color: #666; white-space: nowrap; }
   .reason { color: var(--red); font-size: 0.8em; }
@@ -913,7 +917,7 @@ function renderJobs(jobs) {
           ${j.starred ? '<span class="badge-starred">★</span>' : '<span style="color:#333">☆</span>'}
         </button>
       </td>
-      <td class="company">${esc(j.company)}</td>
+      <td class="company"><span class="company-link" onclick="goToCompany('${esc(j.company)}');event.stopPropagation()">${esc(j.company)}</span></td>
       <td class="position">
         <a href="${esc(j.url)}" target="_blank">${esc(j.position)}</a>
         ${j.agentic_ai_relevant ? '<span class="badge-agentic">AGENTIC</span>' : ''}
@@ -1241,7 +1245,7 @@ async function loadCompanies() {
     const disabledBadge = !c.enabled ? ' <span class="badge-disabled">DISABLED</span>' : '';
     const expandHint = analyzed ? `<div class="cc-expand-hint" id="hint-${cardId}">[click to expand]</div>` : '';
 
-    return `<div class="company-card" id="${cardId}" onclick="toggleCompanyCard('${cardId}', event)">
+    return `<div class="company-card" id="${cardId}" data-company="${esc(c.company)}" onclick="toggleCompanyCard('${cardId}', event)">
       <div class="cc-header">
         <div class="cc-name">${esc(c.company)}${disabledBadge}</div>
         ${scoreHtml}
@@ -1287,6 +1291,38 @@ function toggleCompanyCard(cardId, event) {
   detail.style.display = open ? 'none' : 'block';
   if (hint) hint.textContent = open ? '[click to expand]' : '[click to collapse]';
   if (card) card.style.borderColor = open ? '' : 'var(--cyan)';
+}
+
+async function goToCompany(name) {
+  // Switch to COMPANIES tab
+  document.querySelectorAll('.nav button').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.nav button').forEach(b => { if (b.textContent === 'COMPANIES') b.classList.add('active'); });
+  document.querySelectorAll('.content > div').forEach(d => d.style.display = 'none');
+  document.getElementById('tab-companies').style.display = 'block';
+
+  // Load companies if not already rendered
+  await loadCompanies();
+
+  // Find card by data-company attribute
+  const card = document.querySelector(`.company-card[data-company="${name.replace(/"/g, '\\"')}"]`);
+  if (!card) {
+    toast(`${name}: no analysis yet — click [ANALYZE] in the job row`);
+    return;
+  }
+
+  // Scroll and highlight
+  card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  card.classList.remove('card-highlight');
+  void card.offsetWidth; // force reflow to restart animation
+  card.classList.add('card-highlight');
+  setTimeout(() => card.classList.remove('card-highlight'), 1800);
+
+  // Auto-expand reasoning if analyzed
+  const cardId = card.id;
+  const detail = document.getElementById('cr-' + cardId);
+  if (detail && detail.style.display === 'none') {
+    toggleCompanyCard(cardId, { target: card });
+  }
 }
 
 function filterByCompany(company) {
