@@ -791,6 +791,7 @@
   <!-- COMPANIES TAB -->
   <div id="tab-companies" style="display:none">
     <div class="controls">
+      <input type="text" id="search-company" placeholder="SEARCH COMPANIES..." style="width:240px;max-width:100%" oninput="debounceCompanies()">
       <select id="filter-company-enabled" onchange="loadCompanies()">
         <option value="">ALL</option>
         <option value="1" selected>ENABLED</option>
@@ -814,6 +815,11 @@ let currentSort = 'fetched_at';
 let analyzedCompanies = new Set(); // companies with fresh analysis
 let currentOrder = 'desc';
 let debounceTimer = null;
+let debounceCompanyTimer = null;
+function debounceCompanies() {
+  clearTimeout(debounceCompanyTimer);
+  debounceCompanyTimer = setTimeout(loadCompanies, 200);
+}
 
 // ── Clock ──────────────────────────────────────────────────────────────
 function updateClock() {
@@ -1214,13 +1220,19 @@ async function loadCompanies() {
 
   const enabledFilter = document.getElementById('filter-company-enabled').value;
   const analyzedFilter = document.getElementById('filter-company-analyzed').value;
+  const searchQ = (document.getElementById('search-company').value || '').trim().toLowerCase();
   if (enabledFilter !== '') companies = companies.filter(c => String(c.enabled) === enabledFilter);
   if (analyzedFilter === 'yes') companies = companies.filter(c => c.overall_score != null);
   if (analyzedFilter === 'no')  companies = companies.filter(c => c.overall_score == null);
+  if (searchQ) companies = companies.filter(c =>
+    (c.company || '').toLowerCase().includes(searchQ) ||
+    (c.summary  || '').toLowerCase().includes(searchQ) ||
+    (c.ats_type || '').toLowerCase().includes(searchQ)
+  );
 
   const grid = document.getElementById('companies-grid');
   if (!companies.length) {
-    grid.innerHTML = '<div style="color:#666;padding:20px">No companies match filter.</div>';
+    grid.innerHTML = `<div style="color:#666;padding:20px">No companies match${searchQ ? ' "' + searchQ + '"' : ' filter'}.`;
     return;
   }
 
