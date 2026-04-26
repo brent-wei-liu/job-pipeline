@@ -7,7 +7,7 @@ from html import unescape
 
 logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
-    datefmt="%H:%M:%S",
+    datefmt="%Y-%m-%d %H:%M:%S",
     level=logging.INFO,
 )
 log = logging.getLogger("job_fetch")
