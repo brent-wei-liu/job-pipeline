@@ -230,11 +230,64 @@ def fetch_workday(slug, limit=100):
     return results, None
 
 
+def fetch_smartrecruiters(slug, limit=100):
+    """SmartRecruiters adapter. slug = company identifier (e.g. 'intuitive', 'sandisk')."""
+    SR_BASE = "https://api.smartrecruiters.com/v1/companies"
+    results = []
+    offset = 0
+    page_size = min(limit, 100)
+
+    while len(results) < limit:
+        data, err = _json_get(f"{SR_BASE}/{slug}/postings?limit={page_size}&offset={offset}")
+        if err:
+            return None, err
+        if not isinstance(data, dict) or "content" not in data:
+            return None, f"unexpected response: {str(data)[:100]}"
+
+        postings = data["content"]
+        if not postings:
+            break
+
+        for j in postings:
+            if len(results) >= limit:
+                break
+            jid = j.get("id", "")
+            position = j.get("name", "")
+            apply_url = j.get("applyUrl") or j.get("postingUrl") or f"https://jobs.smartrecruiters.com/{slug}/{jid}"
+
+            # Fetch JD detail
+            jd_text = ""
+            detail, derr = _json_get(f"{SR_BASE}/{slug}/postings/{jid}")
+            if not derr and detail:
+                sections = detail.get("jobAd", {}).get("sections", {})
+                parts = []
+                for key in ("jobDescription", "qualifications", "additionalInformation"):
+                    sec = sections.get(key, {})
+                    if sec.get("text"):
+                        parts.append(sec["text"])
+                jd_text = strip_html("\n\n".join(parts))[:18000]
+
+            results.append({
+                "external_id": str(jid),
+                "position":    position,
+                "url":         apply_url,
+                "jd_text":     jd_text,
+            })
+            time.sleep(0.15)
+
+        offset += len(postings)
+        if offset >= data.get("totalFound", 0):
+            break
+
+    return results, None
+
+
 FETCHERS = {
-    "greenhouse": fetch_greenhouse,
-    "ashby":      fetch_ashby,
-    "lever":      fetch_lever,
-    "workday":    fetch_workday,
+    "greenhouse":      fetch_greenhouse,
+    "ashby":           fetch_ashby,
+    "lever":           fetch_lever,
+    "workday":         fetch_workday,
+    "smartrecruiters": fetch_smartrecruiters,
 }
 
 
