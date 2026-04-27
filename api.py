@@ -284,9 +284,17 @@ def list_companies():
                ca.reasoning, ca.analyzed_at, ca.analyst_model,
                ca.is_public, ca.market_cap_usd, ca.funding_stage,
                ca.total_raised_usd, ca.notable_investors
-        FROM watchlist w
-        LEFT JOIN company_analysis ca ON ca.company = w.company
-        ORDER BY ca.overall_score DESC NULLS LAST, w.company ASC
+        FROM watchlist w LEFT JOIN company_analysis ca ON ca.company = w.company
+        UNION
+        SELECT ca.company, 'manual' AS ats_type, NULL AS ats_slug, 0 AS enabled,
+               ca.summary, ca.funding_score, ca.revenue_score, ca.moat_score,
+               ca.stage_score, ca.risk_score, ca.overall_score,
+               ca.reasoning, ca.analyzed_at, ca.analyst_model,
+               ca.is_public, ca.market_cap_usd, ca.funding_stage,
+               ca.total_raised_usd, ca.notable_investors
+        FROM company_analysis ca
+        WHERE ca.company NOT IN (SELECT company FROM watchlist)
+        ORDER BY overall_score DESC NULLS LAST, company ASC
     """).fetchall()
     conn.close()
     return {"companies": [dict(r) for r in rows], "total": len(rows)}
