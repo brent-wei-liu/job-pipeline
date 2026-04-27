@@ -694,8 +694,17 @@
     padding: 10px 20px; cursor: pointer; display: none;
     box-shadow: 0 0 14px rgba(0,255,242,0.22);
   }
-  #fab-jobs:hover { background: rgba(0,255,242,0.07); box-shadow: 0 0 22px rgba(0,255,242,0.4); }
+  #fab-jobs:hover  { background: rgba(0,255,242,0.07); box-shadow: 0 0 22px rgba(0,255,242,0.4); }
+  #fab-score {
+    position: fixed; bottom: 24px; right: 20px; z-index: 200;
+    font-family: 'Share Tech Mono', monospace; font-size: 0.8em; letter-spacing: 0.08em;
+    background: rgba(0,0,0,0.88); border: 1px solid var(--cyan); color: var(--cyan);
+    padding: 10px 20px; cursor: pointer; display: none;
+    box-shadow: 0 0 14px rgba(0,255,242,0.22);
+  }
+  #fab-score:hover { background: rgba(0,255,242,0.07); box-shadow: 0 0 22px rgba(0,255,242,0.4); }
   #tab-companies { padding-bottom: 64px; }
+  #tab-jobs      { padding-bottom: 64px; }
 </style>
 </head>
 <body>
@@ -821,6 +830,7 @@
 
 <div class="toast" id="toast"></div>
 <button id="fab-jobs" onclick="switchTab('jobs')">→ JOBS</button>
+<button id="fab-score" onclick="currentSort='match_score';currentOrder='desc';loadJobs()">↓ TOP SCORE</button>
 
 <script>
 // ── State ──────────────────────────────────────────────────────────────
@@ -859,13 +869,18 @@ function toast(msg) {
 }
 
 // ── Tabs ───────────────────────────────────────────────────────────────
+function setFABs(tab) {
+  document.getElementById('fab-jobs').style.display   = tab === 'companies' ? 'block' : 'none';
+  document.getElementById('fab-score').style.display  = tab === 'jobs'      ? 'block' : 'none';
+}
+
 function switchTab(tab) {
   const tabLabels = {jobs:'JOBS', stats:'STATS', runs:'SEARCH RUNS', digests:'DIGESTS', companies:'COMPANIES'};
   document.querySelectorAll('.nav button').forEach(b => b.classList.remove('active'));
   document.querySelectorAll('.content > div').forEach(d => d.style.display = 'none');
   document.querySelectorAll('.nav button').forEach(b => { if (b.textContent === tabLabels[tab]) b.classList.add('active'); });
   document.getElementById('tab-' + tab).style.display = 'block';
-  document.getElementById('fab-jobs').style.display = tab === 'companies' ? 'block' : 'none';
+  setFABs(tab);
   if (tab === 'stats') loadStats();
   if (tab === 'runs') loadRuns();
   if (tab === 'digests') loadDigests();
@@ -1441,7 +1456,7 @@ async function goToCompany(name) {
   document.querySelectorAll('.nav button').forEach(b => { if (b.textContent === 'COMPANIES') b.classList.add('active'); });
   document.querySelectorAll('.content > div').forEach(d => d.style.display = 'none');
   document.getElementById('tab-companies').style.display = 'block';
-  document.getElementById('fab-jobs').style.display = 'block';
+  setFABs('companies');
 
   // Clear search so the target card is never filtered out
   document.getElementById('search-company').value = '';
@@ -1473,7 +1488,7 @@ function filterByCompany(company) {
   });
   document.querySelectorAll('.content > div').forEach(d => d.style.display = 'none');
   document.getElementById('tab-jobs').style.display = 'block';
-  document.getElementById('fab-jobs').style.display = 'none';
+  setFABs('jobs');
   document.getElementById('search').value = company;
   loadJobs();
 }
@@ -1494,6 +1509,7 @@ async function init() {
     const ca = await fetch('/api/companies').then(r => r.json());
     (ca.companies || []).forEach(c => { if (c.overall_score != null) analyzedCompanies.add(c.company); });
   } catch (e) {}
+  setFABs('jobs');
   loadJobs();
 }
 
