@@ -1028,7 +1028,13 @@ async function toggleStar(id) {
   const res = await fetch(`/api/jobs/${id}/star`, { method: 'POST' });
   const data = await res.json();
   toast(data.starred ? '★ STARRED' : '☆ UNSTARRED');
-  loadJobs();
+  const row = document.getElementById('row-' + id);
+  if (row) {
+    const btn = row.querySelector('.star-btn');
+    if (btn) btn.innerHTML = data.starred
+      ? '<span class="badge-starred">★</span>'
+      : '<span style="color:#333">☆</span>';
+  }
 }
 
 async function saveNotes(id, notes) {
