@@ -1028,7 +1028,7 @@ async function analyzeCompany(jobId, company) {
     const cached = data.cached ? ' (cached)' : '';
     area.innerHTML = `<span class="analyze-result">
       score: <span class="score">${data.overall_score}</span>/10
-      <button class="analyze-btn" style="margin-left:6px" onclick="switchTab('companies');event.stopPropagation()">[VIEW]</button>
+      <button class="analyze-btn" style="margin-left:6px" onclick="goToCompany('${esc(company)}');event.stopPropagation()">[VIEW]</button>
       <span style="color:#444;font-size:0.9em"> ${model}${cached}</span>
     </span>`;
     toast(`${company}: score ${data.overall_score}/10`);
@@ -1430,6 +1430,8 @@ async function goToCompany(name) {
   document.querySelectorAll('.content > div').forEach(d => d.style.display = 'none');
   document.getElementById('tab-companies').style.display = 'block';
 
+  // Clear search so the target card is never filtered out
+  document.getElementById('search-company').value = '';
   await loadCompanies();
 
   const card = document.querySelector(`.company-card[data-company="${name.replace(/"/g, '\\"')}"]`);
