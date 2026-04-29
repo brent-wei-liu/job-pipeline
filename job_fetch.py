@@ -115,11 +115,42 @@ def reject_by_title(position):
 
     # Irrelevant role type
     irrelevant_roles = [
+        # Engineering-adjacent but not the right kind
         "frontend", "front end", "front-end",
         "data scientist", "data analyst", "data analytics",
         "product manager", "product designer",
         "devops", "site reliability", "sre",
         "qa engineer", "test engineer",
+        # Marketing
+        "marketing",
+        # Sales (note: "sales engineer" / "solutions engineer" / "customer engineer" stay)
+        "account executive", "account manager",
+        " sdr", " bdr", "sales rep", "sales lead",
+        "sales development representative",
+        "business development representative",
+        # HR / People
+        "recruiter", "recruiting", "talent acquisition",
+        "people partner", "people ops", "people operations",
+        # Finance / Tax
+        "accountant", "accounting", "financial analyst", "fp&a",
+        "tax ", "auditor", "treasury",
+        # Legal
+        "counsel", "paralegal", "compliance officer", "compliance manager",
+        "attorney", "policy analyst",
+        # Customer Success / Support (note: "Technical Support Engineer" stays)
+        "customer success", "customer support",
+        "support specialist", "customer experience manager",
+        # Content / PR / Comms
+        "podcast", "content writer", "content creator", "copywriter",
+        "communications manager", "public relations", "social media", "editor",
+        # Operations / Business
+        "business analyst", "business operations", "business partner",
+        "administrative", "executive assistant", "operations lead",
+        "strategy and operations", "strategy & operations", "chief of staff",
+        # Design / Creative (note: "design engineer" stays)
+        "ux designer", "ui designer", "visual designer", "graphic designer",
+        "motion design", "creative director", "creative lead",
+        "creative producer", "art director",
     ]
     for pat in irrelevant_roles:
         if pat in pos_lower:
