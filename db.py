@@ -105,6 +105,11 @@ def _init_tables(conn):
         if col not in ca_cols:
             conn.execute(f"ALTER TABLE company_analysis ADD COLUMN {col} {typedef}")
     conn.commit()
+    # Migration: add LinkedIn company ID column to watchlist (for f_C= filter fetching)
+    wl_cols = {r[1] for r in conn.execute("PRAGMA table_info(watchlist)").fetchall()}
+    if "linkedin_company_id" not in wl_cols:
+        conn.execute("ALTER TABLE watchlist ADD COLUMN linkedin_company_id INTEGER DEFAULT NULL")
+        conn.commit()
     _seed_watchlist(conn)
 
 
