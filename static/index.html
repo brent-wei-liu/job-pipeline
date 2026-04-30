@@ -996,8 +996,11 @@ function renderJobs(jobs, append = false) {
       </td>
       <td class="date">${formatDate(j.fetched_at)}</td>
       <td>
-        <button class="action-btn" onclick="toggleJD(${j.id})">JD</button>
-        <button class="action-btn danger" onclick="deleteJob(${j.id})">DEL</button>
+        <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-start">
+          <button class="action-btn" onclick="toggleJD(${j.id})">JD</button>
+          <button class="action-btn danger" onclick="deleteJob(${j.id})">DEL</button>
+          <div id="analyze-area-${j.id}"><button class="analyze-btn" onclick="analyzeCompany(${j.id},this.dataset.c);event.stopPropagation()" data-c="${esc(j.company)}">${analyzedCompanies.has(j.company) ? '[REANALYZE]' : '[ANALYZE]'}</button></div>
+        </div>
       </td>
     </tr>
     <tr class="sub-row" id="sub-${j.id}">
@@ -1006,7 +1009,6 @@ function renderJobs(jobs, append = false) {
           <span class="badge badge-${j.status}">${j.status}</span>
           <span class="sub-date">${formatDate(j.fetched_at)}</span>
         </div>
-        <div id="analyze-area-${j.id}" style="margin-bottom:4px"><button class="analyze-btn" onclick="analyzeCompany(${j.id},this.dataset.c);event.stopPropagation()" data-c="${esc(j.company)}">${analyzedCompanies.has(j.company) ? '[REANALYZE]' : '[ANALYZE]'}</button></div>
         <input class="notes-input" value="${esc(j.notes || '')}"
                placeholder="add note..."
                onblur="saveNotes(${j.id}, this.value)"
