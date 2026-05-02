@@ -330,7 +330,10 @@ Output ONLY a single JSON object (no markdown, no explanation):
 {{"company":"{company}","summary":"一句话中文简介","funding_score":N,"revenue_score":N,"moat_score":N,"stage_score":N,"risk_score":N,"overall_score":N,"reasoning":{{"funding":"...","revenue":"...","moat":"...","stage":"...","risk":"..."}},"is_public":1,"market_cap_usd":2600.0,"funding_stage":null,"total_raised_usd":null,"notable_investors":null,"analyst_model":"claude-sonnet-4-6"}}"""
 
 CLAUDE_CLI = os.environ.get("CLAUDE_BIN") or shutil.which("claude")
-ANALYZE_TIMEOUT = 90  # seconds
+# Subprocess running from the project dir takes ~2x the bare CLI latency
+# because Claude Code auto-discovers project skills / CLAUDE.md as context.
+# 180s leaves a comfortable margin for the WebSearch-instructed prompt.
+ANALYZE_TIMEOUT = 180  # seconds
 
 
 @app.post("/api/companies/{company}/analyze")
@@ -378,12 +381,17 @@ def analyze_company(company: str):
         conn.close()
         raise HTTPException(502, f"JSON parse error: {e} — raw: {raw[:200]}")
 
-    # Validate required fields
-    required = {"funding_score", "revenue_score", "moat_score", "stage_score", "risk_score", "overall_score"}
+    # Soft-validate required score fields: missing → 0 with a warning.
+    # Hard-failing here meant the user got a useless 502 when the LLM
+    # truncated or omitted a single field; better to record what we have.
+    required = {"funding_score", "revenue_score", "moat_score",
+                "stage_score", "risk_score", "overall_score"}
     missing = required - data.keys()
+    warnings = []
     if missing:
-        conn.close()
-        raise HTTPException(502, f"Missing fields: {missing}")
+        warnings.append(f"missing score fields defaulted to 0: {sorted(missing)}")
+        for k in missing:
+            data[k] = 0
 
     reasoning = data.get("reasoning", {})
     if isinstance(reasoning, dict):
@@ -419,7 +427,10 @@ def analyze_company(company: str):
     conn.commit()
     row = conn.execute("SELECT * FROM company_analysis WHERE company = ?", (company,)).fetchone()
     conn.close()
-    return {"cached": False, **dict(row)}
+    resp = {"cached": False, **dict(row)}
+    if warnings:
+        resp["warnings"] = warnings
+    return resp
 
 
 if __name__ == "__main__":
