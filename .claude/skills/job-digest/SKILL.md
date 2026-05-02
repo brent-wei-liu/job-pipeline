@@ -24,52 +24,68 @@ This outputs a JSON with: accepted jobs (with match scores), rejected jobs, sear
 
 ### Step 2: Generate the digest report
 
-Write the report in Chinese. The goal is not just listing jobs — it's providing **actionable insight** so the user can quickly decide what to focus on.
+Write the report in Chinese using the **strict template below**. Section headings, sub-row labels, and the final `行动建议` line are required — do not rephrase them. Inside each row you have full freedom on prose quality.
 
-#### Report structure
+#### Report structure (mandatory, fill in but do not rename)
 
-```
+````
 # 求职日报 YYYY-MM-DD
 
 ## 今日概览
-[一两句话总结今天的情况：新增多少条，多少条高匹配，有没有值得关注的趋势]
+
+[ONE narrative paragraph (~3-5 sentences). Cover: total accepted vs rejected counts, how many entered ≥7 high-match band, top 1-2 themes/directions, whether filter rules behaved well today. Don't bullet-list the numbers — make it read like an analyst's lede.]
 
 ## 值得重点关注（≥7分）
-[对每个高分 job，用 2-3 句话说明为什么值得关注，不只是罗列字段]
 
-格式：
-**公司 / 职位** — N分
-为什么匹配：[结合简历解释，不是照搬 match_reasons]
-需要注意：[gaps 里最关键的一两点]
-链接：[url]
+[For EACH job with match_score ≥ 7, exactly four lines:]
+
+**<Company> / <Title>** — N分
+为什么匹配：<2-3 sentences linking the JD to specific resume items (project names, prior employers, technologies). Reference Pinterest LLM search ranking, Meta ads, Yahoo recsys etc by name where relevant. Do NOT just say "技术栈匹配".>
+需要注意：<1-2 sentences on the most concrete gap or risk — domain mismatch, level concern, early-stage uncertainty, missing skill. Be specific.>
+链接：<url>
+
+[Blank line between jobs.]
 
 ## 可以考虑（4-6分）
-[简短列出，每个一句话说明]
 
-格式：
-- **公司 / 职位** — N分：[一句话点评]
+[For EACH job with 4 ≤ match_score ≤ 6, ONE bullet:]
+
+- **<Company> / <Title>** — N分：<one-sentence verdict explaining what's off — usually wrong domain, wrong level, or thin AI content.>
 
 ## 不太合适（≤3分）
-[只列公司/职位/分数，不展开]
 
-## 被过滤掉的
-[列出被 reject 的，附原因，帮助判断过滤规则是否需要调整]
+[ONE summary line, NO list of every job:]
+
+共 N 条，集中在 <2-4 broad role categories with company examples in parentheses, e.g. "Apple Genius/Specialist、Tesla 制造/项目经理、Microsoft 行政、Amazon 运营">，<one-clause why they leaked through, e.g. "全部为公司关键词搜索的副产物，与 ML 工程无关">。不展开。
+
+## 被过滤掉的（N条）
+
+[Group rejected jobs by reject_reason. ONE bullet per reason. Show count and brief description. If a reason rejected something potentially worth reviewing manually, flag it explicitly:]
+
+- `irrelevant_role`（X条）：<which kinds of roles, which companies>，过滤合理。
+- `seniority_too_low`（X条）：<examples>，过滤正确。
+- `citizenship_greencard`（X条）：<examples>。<Comment if any high-match got killed — flag for manual review>.
+- [other reject_reasons as applicable]
 
 ## 洞察
-[这是最重要的部分。分析今天数据中的模式和趋势，比如：]
-- 某类岗位最近出现频率变高/变低了吗？
-- 高分岗位集中在哪些公司/方向？
-- 过滤规则有没有误杀好机会的迹象？
-- 和之前几天对比，市场有什么变化？
-- 对求职策略有什么建议？
-```
+
+[3-5 bullets. Each focuses on ONE pattern or strategic implication, not a job summary. Lead with a bold short label, then the analytic point.]
+
+- **<Pattern label>**：<the observation, what it means, recommended action>.
+- **<Pattern label>**：<...>
+- **<Pattern label>**：<...>
+
+行动建议：<one final sentence prioritizing the user's actions for today/this week — which 1-2 jobs to apply to first, what resume tweak is needed, what to defer.>
+````
 
 #### Writing principles
 
 - **有洞见，不是流水账**。"今天新增 9 条"没有价值，"今天 Meta FAIR 和一个 GEO 方向的 founding role 都是 8 分，LLM/搜索方向的高质量机会在增加"才有价值。
-- **结合简历说匹配**。不要说"技术栈匹配"，要说"你在 Pinterest 做的 LLM search ranking 直接对口这个岗位的核心需求"。
-- **指出风险**。薪资偏低、级别不匹配、公司太早期，这些要明确说出来。
-- **洞察要具体**。基于数据说话，不要泛泛而谈。
+- **结合简历说匹配**。不要说"技术栈匹配"，要说"你在 Pinterest 做的 LLM search ranking 直接对口这个岗位的核心需求"。简历项目名、雇主名、具体技术（CLIP / BLIP-2 / qLoRA / 多智能体编排）要精确引用。
+- **指出风险**。薪资偏低、级别不匹配、公司太早期、领域不熟悉，这些要明确说出来。
+- **洞察要具体**。基于今天的数据说话，不要泛泛而谈。给出可执行建议而不是观察。
+- **不要省略章节**。即使某档没有 jobs（例如 ≥7 分一条没有），也要保留章节标题并写一行"今天无 7+ 高分匹配。"等说明。
+- **`行动建议:` 是终行**，独立成段，不要嵌在洞察 bullets 里。
 
 ### Step 3: Save to database
 
