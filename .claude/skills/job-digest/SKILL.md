@@ -81,10 +81,10 @@ echo '<report_content>' | python3 job_digest.py save-summary
 
 ### Step 4: Send via Gmail (SMTP)
 
-Pipe the digest body into `job_digest.py send-email`. Subject is `求职日报 YYYY-MM-DD`, recipient defaults to `brent.wei.liu@gmail.com`.
+Pipe the digest body into the standalone `email_sender.py` CLI. Subject is `求职日报 YYYY-MM-DD`, recipient defaults to `brent.wei.liu@gmail.com`.
 
 ```bash
-echo "$DIGEST_BODY" | python3 job_digest.py send-email --subject "求职日报 2026-05-02"
+echo "$DIGEST_BODY" | python3 email_sender.py --subject "求职日报 2026-05-02"
 ```
 
 (Use a heredoc or temp file in practice — `echo` mangles multi-line content.)

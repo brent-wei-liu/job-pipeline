@@ -147,10 +147,6 @@ if __name__ == "__main__":
 
     sc = sub.add_parser("save-score", help="Save match score for a job (JSON from stdin)")
 
-    se = sub.add_parser("send-email", help="Send digest body (stdin, markdown) via Gmail SMTP")
-    se.add_argument("--subject", required=True)
-    se.add_argument("--to", default="brent.wei.liu@gmail.com")
-
     args = ap.parse_args()
     if args.cmd == "query":
         cmd_query(args)
@@ -180,18 +176,5 @@ if __name__ == "__main__":
         save_summary(conn, content, args.date)
         conn.close()
         print(f"Saved digest summary ({len(content)} chars)")
-    elif args.cmd == "send-email":
-        import sys
-        from email_sender import send_email
-        body = sys.stdin.read()
-        if not body.strip():
-            print(json.dumps({"error": "stdin empty"}))
-            sys.exit(1)
-        try:
-            result = send_email(args.to, args.subject, body)
-            print(json.dumps(result, ensure_ascii=False))
-        except Exception as e:
-            print(json.dumps({"error": str(e)}, ensure_ascii=False))
-            sys.exit(1)
     else:
         ap.print_help()

@@ -192,7 +192,7 @@ pip3 install fastapi uvicorn requests
 
 ## Email Setup
 
-`job_digest.py send-email` 通过 Gmail SMTP（`smtp.gmail.com:587 STARTTLS`）真发邮件。配置一次即可：
+`email_sender.py` 是独立 CLI（`echo "$body" | python3 email_sender.py --subject "..."`），通过 Gmail SMTP（`smtp.gmail.com:587 STARTTLS`）真发邮件。配置一次即可：
 
 1. Google 账号开启 **2FA**（如尚未启用）
 2. 访问 [App Passwords](https://myaccount.google.com/apppasswords) 生成新密码（命名如 `job-pipeline`）
