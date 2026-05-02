@@ -4,6 +4,10 @@ __pycache__/
 data/jobs.db
 *.db-shm
 *.db-wal
+
+# personal data
+data/resume.md
+data/watchlist.local.json
 .fuse_hidden*
 data/.fuse_hidden*
 data/fetch.log

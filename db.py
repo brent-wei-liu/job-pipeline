@@ -262,53 +262,29 @@ def get_recent_summaries(conn, limit=10):
     ).fetchall()
 
 
-_WATCHLIST_SEED = [
-    # (company, ats_type, ats_slug, enabled)
-    # ── Greenhouse (enabled) ──────────────────────────────────────────────
-    ("Anthropic",             "greenhouse", "anthropic",             1),
-    ("xAI",                   "greenhouse", "xai",                   1),
-    ("Scale AI",              "greenhouse", "scaleai",               1),
-    ("Together AI",           "greenhouse", "togetherai",            1),
-    ("Fireworks AI",          "greenhouse", "fireworksai",           1),
-    ("Figure",                "greenhouse", "figureai",              1),
-    ("Databricks",            "greenhouse", "databricks",            1),
-    ("Waymo",                 "greenhouse", "waymo",                 1),
-    ("Cruise",                "greenhouse", "getcruise",             0),  # slug needs verification
-    # ── Ashby (enabled) ──────────────────────────────────────────────────
-    ("OpenAI",                "ashby",      "openai",                1),
-    ("Cohere",                "ashby",      "cohere",                1),
-    ("Modal",                 "ashby",      "modal",                 1),
-    ("Physical Intelligence", "ashby",      "physicalintelligence",  1),
-    # ── Lever (enabled) ──────────────────────────────────────────────────
-    ("Mistral",               "lever",      "mistral",               1),
-    # ── Workable (not yet implemented) ───────────────────────────────────
-    ("Hugging Face",          "workable",   "huggingface",           0),
-    # ── Workday (unofficial API, not yet implemented) ─────────────────────
-    ("Broadcom",              "workday",    "broadcom/External_Career", 0),
-    ("NVIDIA",                "workday",    "nvidia.wd5",            0),
-    ("Micron",                "workday",    "micron.wd1",            0),
-    ("Marvell",               "workday",    "marvell.wd1",           0),
-    ("Cadence",               "workday",    "cadence.wd1",           0),
-    ("Snowflake",             "workday",    None,                    0),
-    # ── Custom / other ATS (no public API) ───────────────────────────────
-    ("SanDisk",               "smartrecruiters", "sandisk",          0),
-    ("AMD",                   "icims",      "amd",                   0),
-    ("Qualcomm",              "eightfold",  "qualcomm",              0),
-    ("Synopsys",              "avature",    "synopsys",              0),
-    ("ARM",                   "seamlesshiring", "arm",               0),
-    ("Amazon",                "custom",     "amazon",                0),
-    ("Microsoft",             "custom",     "microsoft",             0),
-    ("Google",                "custom",     "google",                0),
-    ("Meta",                  "custom",     "meta",                  0),
-    ("Apple",                 "custom",     "apple",                 0),
-    ("Tesla",                 "custom",     "tesla",                 0),
-]
+def _load_watchlist_seed():
+    """Load seed entries from data/watchlist.local.json, falling back to
+    data/watchlist.example.json. Returns a list of dicts; empty list if neither exists.
+    """
+    import json
+    data_dir = Path(__file__).resolve().parent / "data"
+    for fname in ("watchlist.local.json", "watchlist.example.json"):
+        p = data_dir / fname
+        if not p.exists():
+            continue
+        raw = json.loads(p.read_text(encoding="utf-8"))
+        return [r for r in raw if isinstance(r, dict) and "company" in r]
+    return []
 
 
 def _seed_watchlist(conn):
-    for company, ats_type, ats_slug, enabled in _WATCHLIST_SEED:
+    if conn.execute("SELECT COUNT(*) FROM watchlist").fetchone()[0] > 0:
+        return  # already seeded; INSERT OR IGNORE makes this safe but cheap to skip
+    for r in _load_watchlist_seed():
         conn.execute(
-            "INSERT OR IGNORE INTO watchlist (company, ats_type, ats_slug, enabled) VALUES (?, ?, ?, ?)",
-            (company, ats_type, ats_slug, enabled),
+            "INSERT OR IGNORE INTO watchlist (company, ats_type, ats_slug, enabled, linkedin_company_id) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (r["company"], r.get("ats_type", "custom"), r.get("ats_slug"),
+             int(r.get("enabled", 0)), r.get("linkedin_company_id")),
         )
     conn.commit()

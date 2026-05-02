@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Job Pipeline — FastAPI backend."""
-import sys, json, re, subprocess
+import os, sys, json, re, shutil, subprocess
 from pathlib import Path
 from datetime import datetime
 from typing import List, Optional
@@ -329,7 +329,7 @@ Financial profile fields:
 Output ONLY a single JSON object (no markdown, no explanation):
 {{"company":"{company}","summary":"一句话中文简介","funding_score":N,"revenue_score":N,"moat_score":N,"stage_score":N,"risk_score":N,"overall_score":N,"reasoning":{{"funding":"...","revenue":"...","moat":"...","stage":"...","risk":"..."}},"is_public":1,"market_cap_usd":2600.0,"funding_stage":null,"total_raised_usd":null,"notable_investors":null,"analyst_model":"claude-sonnet-4-6"}}"""
 
-CLAUDE_CLI = "/Users/little_claw/.local/bin/claude"
+CLAUDE_CLI = os.environ.get("CLAUDE_BIN") or shutil.which("claude")
 ANALYZE_TIMEOUT = 90  # seconds
 
 
@@ -347,6 +347,12 @@ def analyze_company(company: str):
         return {"cached": True, **dict(cached)}
 
     # Spawn claude CLI
+    if not CLAUDE_CLI:
+        conn.close()
+        raise HTTPException(
+            500,
+            "claude CLI not found. Install Claude Code, or set CLAUDE_BIN to its path."
+        )
     prompt = _ANALYZE_PROMPT.format(company=company)
     try:
         result = subprocess.run(

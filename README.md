@@ -10,7 +10,6 @@ job-pipeline/
 ├── job_fetch.py         # LinkedIn 搜索 + 筛选 + 入库（静默，零 token）
 ├── job_digest.py        # 从 SQLite 生成摘要报告（供 LLM 格式化）
 ├── backfill_scores.py   # LLM 简历↔JD 匹配打分（1-10 分，可中断续跑）
-├── save_report.py       # 一次性手工回填工具（macOS 路径硬编码）
 ├── api.py               # FastAPI 后端（CRUD + Stats）
 ├── static/
 │   └── index.html       # Retro-Futuristic 单文件前端
@@ -166,6 +165,14 @@ GET    /api/summaries?limit=30 # 历史 digest 报告（summaries 表）
 
 手动触发任意 skill：在 Claude Code sidebar 的 "Scheduled" 面板点 "Run now"，或直接在对话里说 "run job-score skill"。
 
+### Setup scheduled tasks
+
+Scheduled tasks are declared in [`schedules.yaml`](./schedules.yaml). To register them on your machine, open Cowork (Claude Code) in this project and say:
+
+> Read schedules.yaml and register every task defined there as a Cowork scheduled task.
+
+Claude will use the `schedule` skill to create each task, copying the relevant SKILL.md (or embedding the inline `script:` for skill-less tasks like `job-pipeline-db-backup`) into `~/Documents/Claude/Scheduled/`. Tasks marked `enabled: false` are skipped.
+
 ### Fetch 手动运行
 
 ```bash
@@ -190,6 +197,13 @@ python3 watchlist_fetch.py --dry-run --company Anthropic --limit 5
 pip3 install fastapi uvicorn requests
 ```
 
+## Quick start
+
+1. Copy `data/resume.md.example` to `data/resume.md` and fill in your own resume — match scoring reads from there.
+2. Copy `data/watchlist.example.json` to `data/watchlist.local.json` and edit to add your target companies. The first time `db.py` initializes the DB, it seeds the `watchlist` table from this file (preferring `local.json`, falling back to `example.json`).
+3. Configure `.env` (see [Email Setup](#email-setup) below) if you want digest emails.
+4. Run `python3 job_fetch.py --max-accept 12` to seed jobs, then `python3 api.py` for the Web UI.
+
 ## Email Setup
 
 `email_sender.py` 是独立 CLI（`echo "$body" | python3 email_sender.py --subject "..."`），通过 Gmail SMTP（`smtp.gmail.com:587 STARTTLS`）真发邮件。配置一次即可：
@@ -198,10 +212,11 @@ pip3 install fastapi uvicorn requests
 2. 访问 [App Passwords](https://myaccount.google.com/apppasswords) 生成新密码（命名如 `job-pipeline`）
 3. 项目根创建 `.env`（已 gitignore，可参考 `.env.example`）：
    ```
-   GMAIL_USER=brent.wei.liu@gmail.com
+   GMAIL_USER=your.email@example.com
    GMAIL_APP_PASSWORD=xxxxxxxxxxxxxxxx   # 16 位 App Password，不带空格
+   DIGEST_RECIPIENT=your.email@example.com
    ```
-   或者 export 到 `~/.zshrc`：`export GMAIL_USER=...; export GMAIL_APP_PASSWORD=...`
+   或者 export 到 `~/.zshrc`：`export GMAIL_USER=...; export GMAIL_APP_PASSWORD=...; export DIGEST_RECIPIENT=...`
 
 env 变量优先于 `.env`。未配置时 `email_sender.py` 会以 JSON 错误退出非零，scheduled task 报告里能直接看到失败原因。
 
@@ -215,7 +230,7 @@ echo "hello world" | python3 email_sender.py --subject "Test email"
 
 You should:
 - See `{"sent": true, "to": "...", "subject": "Test email"}` in stdout
-- Receive the email at the configured `--to` address (default: brent.wei.liu@gmail.com)
+- Receive the email at the recipient (`--to` flag if passed, else `DIGEST_RECIPIENT` env var)
 
 If credentials are missing, you'll get `{"error": "Email credentials missing..."}` and exit 1.
 

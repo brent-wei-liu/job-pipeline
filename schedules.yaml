@@ -1,0 +1,62 @@
+# job-pipeline scheduled tasks (declarative).
+#
+# To register on a fresh machine, open Cowork (Claude Code) in this project
+# and say: "Read schedules.yaml and register every task defined here."
+# The 'schedule' skill will create each task and copy the relevant SKILL.md.
+#
+# Times are local time (assumed PT for this codebase). Skill paths are
+# relative to the project root. `script` is used for tasks with no project
+# skill — the registrar should embed it in the scheduled-task prompt.
+#
+# {{REPO}} is replaced by the absolute path of this project's root at
+# registration time. Don't hardcode user-specific paths in this file.
+
+- name: job-pipeline-fetch
+  skill: null
+  script: cd {{REPO}} && python3 job_fetch.py --max-accept 12 >> data/fetch.log 2>&1
+  frequency: daily 10:00 PT
+  description: LinkedIn keyword search → SQLite. Currently in OS crontab; can migrate to Cowork scheduled task.
+
+- name: job-pipeline-score
+  skill: .claude/skills/job-score
+  frequency: daily 10:30 PT
+  description: Score recent unscored accepted jobs against the resume (1-10 LLM match).
+
+- name: job-pipeline-digest
+  skill: .claude/skills/job-digest
+  frequency: daily 11:00 PT
+  description: Generate Chinese digest from scored jobs, save to summaries table, send via email_sender.py.
+
+- name: job-pipeline-db-backup
+  skill: null
+  script: |
+    DATE=$(date +%Y-%m-%d)
+    mkdir -p {{REPO}}/data/backups
+    sqlite3 {{REPO}}/data/jobs.db ".backup {{REPO}}/data/backups/jobs.db.${DATE}"
+    sqlite3 {{REPO}}/data/backups/jobs.db.${DATE} "SELECT COUNT(*) FROM jobs"
+    find {{REPO}}/data/backups -name 'jobs.db.*' -mtime +7 -delete
+  frequency: daily 03:00 PT
+  description: Atomic SQLite .backup of jobs.db, prune older than 7 days.
+
+- name: job-backfill-scores
+  skill: .claude/skills/job-backfill
+  frequency: every 10m, on demand
+  enabled: false
+  description: Batch-score historical unscored jobs (~20/batch). Currently paused — backlog drained.
+
+- name: aidevboard-fetch
+  skill: null
+  script: cd {{REPO}} && python3 aidevboard_fetch.py
+  frequency: daily 11:30 PT
+  description: Pull senior IC AI/ML jobs from aidevboard.com aggregator (Layer 1+2+3+4 filters).
+
+- name: linkedin-company-fetch
+  skill: null
+  script: cd {{REPO}} && python3 linkedin_company_fetch.py
+  frequency: daily 09:00 PT
+  description: LinkedIn sweep by company ID for big employers (Google/Apple/Meta/Amazon/Microsoft/Tesla/Intuit).
+
+- name: company-analyze
+  skill: .claude/skills/company-analyze
+  frequency: weekly Sunday 08:00 PT
+  description: Research watchlist companies, score 5 dimensions (funding/revenue/moat/stage/risk).

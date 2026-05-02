@@ -1,0 +1,52 @@
+<!--
+This is a template. Copy to data/resume.md and fill in your own resume.
+The match-scoring skills (job-score / job-backfill) read data/resume.md
+to compare against each job description and produce a 1-10 fit score.
+
+Markdown formatting is preserved as-is — use whatever section headers
+make sense for your background. The structure below mirrors a standard
+SWE/ML resume but is just one example.
+-->
+
+# YOUR FULL NAME
+
+City, State, Country
+Email: your.email@example.com · Phone: (xxx) xxx-xxxx · LinkedIn: [yourhandle](https://www.linkedin.com/in/yourhandle/)
+
+## Summary
+
+One or two sentences capturing your seniority, domain, and signature accomplishments. The scoring LLM uses this as the headline for "what kind of role fits this person".
+
+## Skills
+
+- **Domain area 1:** specific technologies, frameworks, methods
+- **Domain area 2:** ...
+- **Languages & tools:** Python, ...
+- **Other:** ...
+
+## Experience
+
+### Company Name — Location
+
+**Job Title** · MMM YYYY – Present
+
+- Achievement with concrete metric (e.g. "Improved X by Y% measured by Z").
+- Project description with the technical details that matter for matching (frameworks, scale, role).
+
+### Previous Company — Location
+
+**Job Title** · MMM YYYY – MMM YYYY
+
+- ...
+
+## Projects
+
+### Project Name · YYYY
+
+- One-line summary, then key technical bullets. Include this if your strongest evidence for a target role is from a side project rather than employment.
+
+## Education
+
+### University Name — City
+
+**Degree, Field** · YYYY – YYYY

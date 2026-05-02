@@ -1,0 +1,10 @@
+[
+  {
+    "_comment": "Example watchlist seed. Copy this file to data/watchlist.local.json and edit to add your target companies. The local copy is gitignored. db.py reads watchlist.local.json first; if missing, falls back to this example. Schema: company (display name), ats_type (greenhouse | ashby | lever | workable | workday | smartrecruiters | custom), ats_slug (board id used in the ATS API URL — e.g. 'anthropic' for boards.greenhouse.io/anthropic), enabled (1 to fetch in scheduled runs, 0 to track-but-skip), linkedin_company_id (numeric LinkedIn company ID — leave null if you only fetch via career-page ATS)."
+  },
+  { "company": "Anthropic",  "ats_type": "greenhouse", "ats_slug": "anthropic", "enabled": 1, "linkedin_company_id": null },
+  { "company": "OpenAI",     "ats_type": "ashby",      "ats_slug": "openai",    "enabled": 1, "linkedin_company_id": null },
+  { "company": "Mistral",    "ats_type": "lever",      "ats_slug": "mistral",   "enabled": 1, "linkedin_company_id": null },
+  { "company": "Databricks", "ats_type": "greenhouse", "ats_slug": "databricks","enabled": 1, "linkedin_company_id": null },
+  { "company": "Cohere",     "ats_type": "ashby",      "ats_slug": "cohere",    "enabled": 1, "linkedin_company_id": null }
+]

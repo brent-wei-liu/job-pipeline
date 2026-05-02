@@ -16,7 +16,7 @@ five dimensions, then save results to the database.
 ### Step 1: Check pending companies
 
 ```bash
-cd /Users/little_claw/job-pipeline && python3 company_analyze.py --stats
+cd <project-root> && python3 company_analyze.py --stats
 ```
 
 If no companies are pending, stop here.
