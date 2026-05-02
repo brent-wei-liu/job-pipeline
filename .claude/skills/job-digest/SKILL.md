@@ -79,20 +79,17 @@ Pipe the report into save-summary:
 echo '<report_content>' | python3 job_digest.py save-summary
 ```
 
-### Step 4: Send via Gmail (SMTP)
+### Step 4: Create Gmail draft
 
-Pipe the digest body into the standalone `email_sender.py` CLI. Subject is `求职日报 YYYY-MM-DD`. Recipient comes from the `DIGEST_RECIPIENT` env var (set in `.env`); pass `--to <addr>` to override.
+Use the Gmail MCP `create_draft` tool to create (not send) a draft email containing the digest. The user reviews in Gmail and sends manually.
 
-```bash
-echo "$DIGEST_BODY" | python3 email_sender.py --subject "求职日报 2026-05-02"
-```
+Parameters:
+- `to`: read `DIGEST_RECIPIENT` from `<project>/.env` (parse `KEY=VALUE` lines, value of `DIGEST_RECIPIENT`). If missing, abort with a clear error.
+- `subject`: `求职日报 YYYY-MM-DD`
+- `body`: the full digest text (plain markdown is fine — Gmail renders linebreaks)
 
-(Use a heredoc or temp file in practice — `echo` mangles multi-line content.)
-
-The script uses Gmail SMTP (`smtp.gmail.com:587 STARTTLS`) with credentials from env (`GMAIL_USER`, `GMAIL_APP_PASSWORD`) or `<project>/.env` fallback. See README → Email Setup. The body is sent as `multipart/alternative` (raw markdown text part + rendered HTML part).
-
-If credentials are missing the script exits non-zero with a JSON error — surface it in the report instead of pretending the email was sent.
+If the Gmail MCP isn't available, surface that to the user — do not silently fall back to anything else.
 
 ### Step 5: Confirm
 
-Report that the digest has been saved and emailed (or that the email step failed).
+Report that the digest has been saved to the DB and a Gmail draft has been created (with the draft id if available).
