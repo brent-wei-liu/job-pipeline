@@ -79,12 +79,20 @@ Pipe the report into save-summary:
 echo '<report_content>' | python3 job_digest.py save-summary
 ```
 
-### Step 4: Send via Gmail
+### Step 4: Send via Gmail (SMTP)
 
-Send the digest report as an email to brent.wei.liu@gmail.com with subject line: `求职日报 YYYY-MM-DD`
+Pipe the digest body into `job_digest.py send-email`. Subject is `求职日报 YYYY-MM-DD`, recipient defaults to `brent.wei.liu@gmail.com`.
 
-Use the Gmail create_draft or equivalent tool to send the email.
+```bash
+echo "$DIGEST_BODY" | python3 job_digest.py send-email --subject "求职日报 2026-05-02"
+```
+
+(Use a heredoc or temp file in practice — `echo` mangles multi-line content.)
+
+The script uses Gmail SMTP (`smtp.gmail.com:587 STARTTLS`) with credentials from env (`GMAIL_USER`, `GMAIL_APP_PASSWORD`) or `<project>/.env` fallback. See README → Email Setup. The body is sent as `multipart/alternative` (raw markdown text part + rendered HTML part).
+
+If credentials are missing the script exits non-zero with a JSON error — surface it in the report instead of pretending the email was sent.
 
 ### Step 5: Confirm
 
-Report that the digest has been saved and emailed.
+Report that the digest has been saved and emailed (or that the email step failed).

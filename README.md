@@ -190,6 +190,21 @@ python3 watchlist_fetch.py --dry-run --company Anthropic --limit 5
 pip3 install fastapi uvicorn requests
 ```
 
+## Email Setup
+
+`job_digest.py send-email` 通过 Gmail SMTP（`smtp.gmail.com:587 STARTTLS`）真发邮件。配置一次即可：
+
+1. Google 账号开启 **2FA**（如尚未启用）
+2. 访问 [App Passwords](https://myaccount.google.com/apppasswords) 生成新密码（命名如 `job-pipeline`）
+3. 项目根创建 `.env`（已 gitignore，可参考 `.env.example`）：
+   ```
+   GMAIL_USER=brent.wei.liu@gmail.com
+   GMAIL_APP_PASSWORD=xxxxxxxxxxxxxxxx   # 16 位 App Password，不带空格
+   ```
+   或者 export 到 `~/.zshrc`：`export GMAIL_USER=...; export GMAIL_APP_PASSWORD=...`
+
+env 变量优先于 `.env`。未配置时 `send-email` 子命令会以 JSON 错误退出非零，scheduled task 报告里能直接看到失败原因。
+
 ## 历史
 
 - 2026-03-24: 初版（单体脚本 `run_pipeline_brent.py`，直接写 Notion）
