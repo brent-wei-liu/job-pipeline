@@ -302,7 +302,11 @@ def list_companies():
 
 _ANALYZE_PROMPT = """You are a company analyst. Research the company "{company}" and score it across five dimensions for a senior ML engineer evaluating job opportunities.
 
-Use WebSearch to find current information on:
+You may use WebSearch and WebFetch tools to research the company (recent news, funding, customers, competitors, official site, etc.).
+
+HARD CONSTRAINT: You MUST use at most 20 web tool calls total across all WebSearch and WebFetch calls combined. Plan your queries carefully — pick the most informative searches first. Suggested priority order: (1) official site / about page, (2) Crunchbase or similar funding database, (3) most recent news / press releases, (4) customer logos / case studies, (5) competitor landscape. After 20 calls, stop searching and write your analysis with what you have. Do not exceed 20.
+
+Topics to cover via web research:
 - Whether the company is publicly traded (search for its stock ticker)
 - If public: current market cap in USD
 - If private: latest funding round stage, total raised, top investors
@@ -330,10 +334,12 @@ Output ONLY a single JSON object (no markdown, no explanation):
 {{"company":"{company}","summary":"一句话中文简介","funding_score":N,"revenue_score":N,"moat_score":N,"stage_score":N,"risk_score":N,"overall_score":N,"reasoning":{{"funding":"...","revenue":"...","moat":"...","stage":"...","risk":"..."}},"is_public":1,"market_cap_usd":2600.0,"funding_stage":null,"total_raised_usd":null,"notable_investors":null,"analyst_model":"claude-sonnet-4-6"}}"""
 
 CLAUDE_CLI = os.environ.get("CLAUDE_BIN") or shutil.which("claude")
-# Subprocess running from the project dir takes ~2x the bare CLI latency
-# because Claude Code auto-discovers project skills / CLAUDE.md as context.
-# 180s leaves a comfortable margin for the WebSearch-instructed prompt.
-ANALYZE_TIMEOUT = 180  # seconds
+# With WebSearch + WebFetch enabled (capped at 20 calls in the prompt),
+# end-to-end latency runs longer. Each web call is a few seconds, plus
+# planning + writing the final JSON. 600s = 10 minutes is the worst-case
+# headroom; soft-fallback parse handles partial output if we still bust.
+ANALYZE_TIMEOUT = 600  # seconds
+ALLOWED_TOOLS = "Read,Bash,WebSearch,WebFetch"
 
 
 @app.post("/api/companies/{company}/analyze")
@@ -358,14 +364,18 @@ def analyze_company(company: str):
         )
     prompt = _ANALYZE_PROMPT.format(company=company)
     try:
+        # Note: --allowedTools is a variadic flag (<tools...>), so passing
+        # it as separate argv tokens swallows the prompt as a tool name.
+        # Use the --flag=value form so the value stays a single token.
         result = subprocess.run(
-            [CLAUDE_CLI, "-p", "--model", "claude-sonnet-4-6", prompt],
+            [CLAUDE_CLI, "-p", "--model", "claude-sonnet-4-6",
+             f"--allowedTools={ALLOWED_TOOLS}", prompt],
             capture_output=True, text=True, timeout=ANALYZE_TIMEOUT,
         )
         raw = result.stdout.strip()
     except subprocess.TimeoutExpired:
         conn.close()
-        raise HTTPException(504, "Analysis timed out after 90s")
+        raise HTTPException(504, f"Analysis timed out after {ANALYZE_TIMEOUT}s")
     except Exception as e:
         conn.close()
         raise HTTPException(500, f"CLI error: {e}")
