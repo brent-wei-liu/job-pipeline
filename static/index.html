@@ -703,6 +703,7 @@
     box-shadow: 0 0 14px rgba(0,255,242,0.22);
   }
   #fab-score:hover { background: rgba(0,255,242,0.07); box-shadow: 0 0 22px rgba(0,255,242,0.4); }
+  #fab-score.active { background: rgba(0,255,242,0.18); box-shadow: 0 0 24px rgba(0,255,242,0.6); color: #fff; }
   #tab-companies { padding-bottom: 64px; }
   #tab-jobs      { padding-bottom: 64px; }
 </style>
@@ -830,7 +831,7 @@
 
 <div class="toast" id="toast"></div>
 <button id="fab-jobs" onclick="switchTab('jobs')">→ JOBS</button>
-<button id="fab-score" onclick="currentSort='match_score';currentOrder='desc';loadJobs()">↓ TOP SCORE</button>
+<button id="fab-score" onclick="toggleScoreSort()">↓ TOP SCORE</button>
 
 <script>
 // ── State ──────────────────────────────────────────────────────────────
@@ -842,6 +843,9 @@ let jobsHasMore = false;
 const JOBS_PAGE_SIZE = 100;
 let currentOrder = 'desc';
 let debounceTimer = null;
+let currentJobs = [];          // jobs currently rendered (matches DOM)
+let originalJobsSnapshot = null; // snapshot of currentJobs in API order, for un-sorting
+let scoreSorted = false;       // top-score FAB active state
 let debounceCompanyTimer = null;
 function debounceCompanies() {
   clearTimeout(debounceCompanyTimer);
@@ -903,6 +907,28 @@ function sortBy(col) {
   loadJobs();
 }
 
+// Sort the currently-loaded jobs by match_score desc (client-side).
+// Click again to restore the original API order. No network call.
+function toggleScoreSort() {
+  const fab = document.getElementById('fab-score');
+  if (!currentJobs.length) return;
+  let next;
+  if (scoreSorted) {
+    next = originalJobsSnapshot || currentJobs;
+    scoreSorted = false;
+    originalJobsSnapshot = null;
+    fab.classList.remove('active');
+  } else {
+    originalJobsSnapshot = currentJobs.slice();
+    next = currentJobs.slice().sort(
+      (a, b) => (b.match_score ?? -1) - (a.match_score ?? -1)
+    );
+    scoreSorted = true;
+    fab.classList.add('active');
+  }
+  renderJobs(next, /*append*/ false, /*fromServer*/ false);
+}
+
 async function loadJobs(append = false) {
   if (!append) jobsOffset = 0;
   const params = new URLSearchParams({
@@ -962,8 +988,18 @@ function renderMatchDetail(j) {
   return html;
 }
 
-function renderJobs(jobs, append = false) {
+function renderJobs(jobs, append = false, fromServer = true) {
   if (!append) { selectedIds.clear(); updateBulkBar(); }
+  // Track currently-rendered jobs so the top-score FAB can sort client-side
+  currentJobs = append ? currentJobs.concat(jobs) : jobs.slice();
+  // A fresh server load resets the client-side sort state.
+  // Re-renders triggered by client-side sort pass fromServer=false to keep it.
+  if (!append && fromServer) {
+    scoreSorted = false;
+    originalJobsSnapshot = null;
+    const fab = document.getElementById('fab-score');
+    if (fab) fab.classList.remove('active');
+  }
   const tbody = document.getElementById('jobs-body');
   const html = jobs.map(j => `
     <tr class="job-row" id="row-${j.id}">
