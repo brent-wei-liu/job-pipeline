@@ -846,6 +846,7 @@ let debounceTimer = null;
 let currentJobs = [];          // jobs currently rendered (matches DOM)
 let originalJobsSnapshot = null; // snapshot of currentJobs in API order, for un-sorting
 let scoreSorted = false;       // top-score FAB active state
+let loadJobsGen = 0;           // bump on each loadJobs; stale responses are dropped
 let debounceCompanyTimer = null;
 function debounceCompanies() {
   clearTimeout(debounceCompanyTimer);
@@ -911,7 +912,15 @@ function sortBy(col) {
 // Click again to restore the original API order. No network call.
 function toggleScoreSort() {
   const fab = document.getElementById('fab-score');
-  if (!currentJobs.length) return;
+  // Cancel any pending search-debounced loadJobs and invalidate any
+  // in-flight loadJobs response — both would otherwise clobber the
+  // sort we are about to apply.
+  clearTimeout(debounceTimer);
+  loadJobsGen++;
+  if (!currentJobs.length) {
+    toast('NO JOBS TO SORT');
+    return;
+  }
   let next;
   if (scoreSorted) {
     next = originalJobsSnapshot || currentJobs;
@@ -931,6 +940,7 @@ function toggleScoreSort() {
 
 async function loadJobs(append = false) {
   if (!append) jobsOffset = 0;
+  const myGen = ++loadJobsGen;   // claim this call's generation
   const params = new URLSearchParams({
     days: document.getElementById('filter-days').value,
     sort: currentSort,
@@ -951,6 +961,8 @@ async function loadJobs(append = false) {
 
   const res = await fetch('/api/jobs?' + params);
   const data = await res.json();
+  // Drop stale responses: a newer loadJobs / toggleScoreSort already won.
+  if (myGen !== loadJobsGen) return;
   jobsHasMore = data.has_more;
   jobsOffset += data.jobs.length;
   renderJobs(data.jobs, append);
