@@ -204,6 +204,31 @@ pip3 install fastapi uvicorn requests
 3. Digest is delivered as a Gmail draft via the Gmail MCP. Set `DIGEST_RECIPIENT` in `.env` (see `.env.example`) to the recipient address. Open the draft in Gmail to review and send.
 4. Run `python3 job_fetch.py --max-accept 12` to seed jobs, then `python3 api.py` for the Web UI.
 
+## Testing
+
+End-to-end UI regression suite using Playwright (Python). Hits the real local API — does not mock, does not spawn the server itself.
+
+Install once:
+
+```bash
+pip install -r requirements-dev.txt
+python3 -m playwright install chromium
+```
+
+Run (in a separate terminal from the running server):
+
+```bash
+python3 api.py                      # terminal 1 — keep the server up
+pytest tests/ui/                    # terminal 2 — run the suite
+```
+
+Useful flags:
+- `pytest tests/ui/ --headed` — watch the browser drive the page in real time
+- `pytest tests/ui/ -k top_score` — run a single test by name fragment
+- `JOB_PIPELINE_URL=http://192.168.1.x:8080 pytest tests/ui/` — point at a remote / phone-LAN server
+
+The whole suite is gated by `_require_server` in `tests/ui/conftest.py` — if the API isn't reachable the suite is cleanly skipped, not failed.
+
 ## 历史
 
 - 2026-03-24: 初版（单体脚本 `run_pipeline_brent.py`，直接写 Notion）
