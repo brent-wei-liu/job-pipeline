@@ -277,3 +277,67 @@ def test_digest_drawer_opens(page: Page, base_url: str):
         arg=digest_id,
         timeout=3_000,
     )
+
+
+# ---------------------------------------------------------------------
+# F. Contextual bulk action bar (slides up on selection, CLEAR + DELETE)
+# ---------------------------------------------------------------------
+
+def test_bulk_action_bar(page: Page, base_url: str):
+    """Selecting jobs reveals the floating action bar; CLEAR dismisses it
+    without affecting rows; the bar is visible without scrolling (fixed
+    position at the bottom of the viewport)."""
+    _open_jobs(page, base_url)
+
+    rows = page.locator("#jobs-body tr.job-row")
+    if rows.count() < 2:
+        pytest.skip("need at least 2 visible job rows to exercise bulk selection")
+
+    bar = page.locator("#bulk-bar")
+    # Initially hidden (no .is-active class — opacity 0, off-screen)
+    expect(bar).not_to_have_class(re.compile(r"\bis-active\b"))
+
+    # Select first two rows
+    cb1 = rows.nth(0).locator(".job-cb")
+    cb2 = rows.nth(1).locator(".job-cb")
+    cb1.check()
+    cb2.check()
+
+    # Bar appears with .is-active and the count reads "02"
+    expect(bar).to_have_class(re.compile(r"\bis-active\b"), timeout=2_000)
+    expect(page.locator("#bulk-count-num")).to_have_text("02")
+
+    # The bar must be visible without scrolling — fixed positioning means
+    # its bounding box should sit inside the current viewport.
+    box = bar.bounding_box()
+    viewport_h = page.evaluate("() => window.innerHeight")
+    assert box is not None, "#bulk-bar has no bounding box"
+    assert 0 <= box["y"] <= viewport_h, (
+        f"#bulk-bar y={box['y']} not within viewport (height={viewport_h}) "
+        "— would require scrolling to see"
+    )
+
+    # Click CLEAR — bar slides out, checkboxes uncheck, no rows deleted
+    initial_count = rows.count()
+    bar.locator(".btn-clear").click()
+    expect(bar).not_to_have_class(re.compile(r"\bis-active\b"), timeout=2_000)
+    assert not cb1.is_checked()
+    assert not cb2.is_checked()
+    assert page.locator("#jobs-body tr.job-row").count() == initial_count, (
+        "CLEAR should not remove rows"
+    )
+
+    # Re-select two rows and exercise the double-click DELETE confirmation —
+    # first click arms confirm state but does not delete; we then CLEAR to
+    # cancel, leaving the DB untouched.
+    cb1.check(); cb2.check()
+    expect(bar).to_have_class(re.compile(r"\bis-active\b"), timeout=2_000)
+    delete_btn = bar.locator(".btn-delete")
+    delete_btn.click()
+    # First click: enters confirm state with "CONFIRM DELETE 2" label
+    expect(delete_btn).to_have_class(re.compile(r"\bconfirm\b"), timeout=2_000)
+    expect(delete_btn).to_have_text(re.compile(r"CONFIRM DELETE 2"))
+    # Bail out without actually deleting
+    bar.locator(".btn-clear").click()
+    expect(bar).not_to_have_class(re.compile(r"\bis-active\b"), timeout=2_000)
+    assert page.locator("#jobs-body tr.job-row").count() == initial_count
