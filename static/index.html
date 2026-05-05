@@ -2004,7 +2004,10 @@ async function bulkDeleteExec() {
   } catch(e) { toast('ERROR: ' + e.message); return; }
   selectedIds.clear();
   updateBulkBar();
-  loadJobs();
+  // Hard reload after bulk delete so the page shows a clean state.
+  // The current querystring (filter/search) is preserved by default, so the
+  // user lands back in the same view minus the deleted rows.
+  window.location.reload();
 }
 
 init();
