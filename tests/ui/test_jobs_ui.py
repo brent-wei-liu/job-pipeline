@@ -568,3 +568,169 @@ def test_mobile_select_all_visible(page: Page, base_url: str):
     assert page.evaluate(
         "() => Array.from(document.querySelectorAll('.job-cb')).every(cb => !cb.checked)"
     )
+
+
+# ---------------------------------------------------------------------
+# I. Soft-deleted jobs stay hidden from the default REJECTED view
+# ---------------------------------------------------------------------
+
+def test_bulk_deleted_jobs_stay_hidden(page: Page, base_url: str):
+    """Pre-condition: pick a small bucket of accepted+visible rows, soft-
+    delete them via /api/jobs/bulk-delete (matches what the UI button
+    does), then reload under the REJECTED status filter and assert those
+    ids are NOT visible. Restore in a finally block."""
+    # Pick a tiny bucket so the test is fast and reversible
+    conn = sqlite3.connect(_DB_PATH)
+    try:
+        target_score = None
+        for candidate in (9, 8, 7):
+            n = conn.execute(
+                "SELECT COUNT(*) FROM jobs "
+                "WHERE match_score = ? AND fetched_at > datetime('now','-365 days') "
+                "AND (reject_reason IS NULL OR reject_reason != 'user_deleted') "
+                "AND status = 'accepted'",
+                (candidate,),
+            ).fetchone()[0]
+            if 1 <= n <= 60:
+                target_score = candidate
+                break
+        if target_score is None:
+            pytest.skip("no score bucket with 1–60 accepted+visible rows")
+    finally:
+        conn.close()
+
+    page.goto(base_url, wait_until="domcontentloaded")
+    page.wait_for_selector("#jobs-body tr.job-row", timeout=10_000)
+    page.select_option("#filter-days", "365")
+    page.select_option("#filter-score-op", "eq")
+    page.select_option("#filter-score-value", str(target_score))
+    page.wait_for_function(
+        "(t) => { const c = Array.from(document.querySelectorAll("
+        "'#jobs-body tr.job-row td.score-cell')); "
+        "return c.length > 0 && c.every(td => parseInt(td.textContent.trim()) === t); }",
+        arg=target_score, timeout=5_000,
+    )
+
+    visible_ids = page.evaluate(
+        "() => Array.from(document.querySelectorAll('#jobs-body tr.job-row'))"
+        ".map(tr => parseInt(tr.id.replace('row-', ''), 10))"
+    )
+    assert visible_ids, "filter returned 0 rows"
+
+    # Snapshot original state for restoration
+    conn = sqlite3.connect(_DB_PATH)
+    placeholders = ",".join("?" * len(visible_ids))
+    pre_state = {
+        row[0]: (row[1], row[2])
+        for row in conn.execute(
+            f"SELECT id, status, reject_reason FROM jobs WHERE id IN ({placeholders})",
+            visible_ids,
+        )
+    }
+    conn.close()
+
+    try:
+        # Soft-delete via the same endpoint the UI uses
+        import urllib.request, json as _json
+        body = _json.dumps({"ids": visible_ids}).encode()
+        req = urllib.request.Request(
+            base_url + "/api/jobs/bulk-delete",
+            data=body, method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=10) as r:
+            assert r.status == 200
+
+        # Reload under REJECTED filter (no score filter — just status=rejected)
+        page.goto(base_url + "/?", wait_until="domcontentloaded")
+        page.select_option("#filter-status", "rejected")
+        page.select_option("#filter-days", "365")
+        # Wait for the post-filter render: either rows present or empty render
+        page.wait_for_function(
+            "() => !document.body.dataset.loading || "
+            "document.querySelectorAll('#jobs-body tr.job-row').length > 0",
+            timeout=5_000,
+        )
+        # The deleted ids must NOT appear in the REJECTED view (the headline
+        # bug: they used to resurface here)
+        leaked = page.evaluate(
+            "(ids) => ids.filter(id => "
+            "  document.getElementById('row-' + id) !== null)",
+            visible_ids,
+        )
+        assert leaked == [], (
+            f"REJECTED filter is leaking user-deleted rows: {leaked[:5]}"
+            + (f" (and {len(leaked)-5} more)" if len(leaked) > 5 else "")
+        )
+    finally:
+        conn = sqlite3.connect(_DB_PATH)
+        for jid, (orig_status, orig_reason) in pre_state.items():
+            conn.execute(
+                "UPDATE jobs SET status = ?, reject_reason = ? WHERE id = ?",
+                (orig_status, orig_reason, jid),
+            )
+        conn.commit()
+        conn.close()
+
+
+# ---------------------------------------------------------------------
+# J. TRASH filter shows only user_deleted rows
+# ---------------------------------------------------------------------
+
+def test_user_deleted_filter_shows_trash(page: Page, base_url: str):
+    """Selecting the TRASH option (status=user_deleted) should show only
+    rows with reject_reason='user_deleted'. Cross-check against a direct
+    SQLite query."""
+    conn = sqlite3.connect(_DB_PATH)
+    try:
+        n_trash = conn.execute(
+            "SELECT COUNT(*) FROM jobs "
+            "WHERE reject_reason = 'user_deleted' "
+            "AND fetched_at > datetime('now','-365 days')"
+        ).fetchone()[0]
+    finally:
+        conn.close()
+    if n_trash == 0:
+        pytest.skip("no user_deleted rows in DB to exercise TRASH filter")
+
+    page.goto(base_url, wait_until="domcontentloaded")
+    page.wait_for_selector("#jobs-body tr.job-row", timeout=10_000)
+    page.select_option("#filter-days", "365")
+    # Switch to TRASH filter — wait on the actual /api/jobs response so we
+    # don't read stale rows from the previous fetch.
+    with page.expect_response(
+        lambda r: "/api/jobs" in r.url and "status=user_deleted" in r.url,
+        timeout=5_000,
+    ):
+        page.select_option("#filter-status", "user_deleted")
+    # Now wait for the DOM to reflect the new fetch — every visible row's id
+    # must come from the trash query.
+    page.wait_for_function(
+        "() => document.querySelectorAll('#jobs-body tr.job-row').length > 0",
+        timeout=5_000,
+    )
+    # Give the render a tick to settle past the network response
+    page.wait_for_load_state("networkidle", timeout=5_000)
+
+    # Cross-check: every visible id has reject_reason='user_deleted' in the DB
+    visible_ids = page.evaluate(
+        "() => Array.from(document.querySelectorAll('#jobs-body tr.job-row'))"
+        ".map(tr => parseInt(tr.id.replace('row-', ''), 10))"
+    )
+    assert visible_ids
+    conn = sqlite3.connect(_DB_PATH)
+    placeholders = ",".join("?" * len(visible_ids))
+    rows = conn.execute(
+        f"SELECT id, reject_reason FROM jobs WHERE id IN ({placeholders})",
+        visible_ids,
+    ).fetchall()
+    conn.close()
+    bad = [(jid, reason) for jid, reason in rows if reason != "user_deleted"]
+    assert not bad, f"TRASH filter showed non-user_deleted rows: {bad[:5]}"
+
+    # Switch back to ALL STATUS — those same ids should disappear from view
+    page.select_option("#filter-status", "")
+    page.wait_for_function(
+        "(ids) => !ids.some(id => document.getElementById('row-' + id))",
+        arg=visible_ids, timeout=5_000,
+    )

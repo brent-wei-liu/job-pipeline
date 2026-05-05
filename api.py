@@ -58,9 +58,17 @@ def list_jobs(
              FROM jobs WHERE fetched_at > datetime('now', ?)"""
     params = [f"-{days} days"]
 
-    if status:
-        sql += " AND status = ?"
-        params.append(status)
+    # Synthetic status 'user_deleted' = the soft-delete trash bin: rows where
+    # reject_reason='user_deleted'. Selecting it shows ONLY the trash; every
+    # other view (including the regular REJECTED filter) hides user-deleted
+    # rows so they don't resurface after the user has dismissed them.
+    if status == "user_deleted":
+        sql += " AND reject_reason = 'user_deleted'"
+    else:
+        if status:
+            sql += " AND status = ?"
+            params.append(status)
+        sql += " AND (reject_reason IS NULL OR reject_reason != 'user_deleted')"
     if starred is not None:
         sql += " AND starred = ?"
         params.append(starred)
@@ -70,8 +78,6 @@ def list_jobs(
     if source:
         sql += " AND source = ?"
         params.append(source)
-    if status != "rejected":
-        sql += " AND (reject_reason IS NULL OR reject_reason != 'user_deleted')"
     if score_op:
         # New API: explicit operator. Takes precedence over min_score.
         op_map = {"lt": "<", "le": "<=", "eq": "=", "ge": ">=", "gt": ">"}
