@@ -43,6 +43,8 @@ def list_jobs(
     search: Optional[str] = Query(None),
     source: Optional[str] = Query(None),
     min_score: Optional[int] = Query(None),
+    score_op: Optional[str] = Query(None, description="Comparison op: lt|le|eq|ge|gt|null. 'null' means unscored."),
+    score_value: Optional[int] = Query(None, ge=0, le=10),
     sort: str = Query("fetched_at"),
     order: str = Query("desc"),
     limit: int = Query(100, ge=1, le=500),
@@ -70,7 +72,16 @@ def list_jobs(
         params.append(source)
     if status != "rejected":
         sql += " AND (reject_reason IS NULL OR reject_reason != 'user_deleted')"
-    if min_score is not None:
+    if score_op:
+        # New API: explicit operator. Takes precedence over min_score.
+        op_map = {"lt": "<", "le": "<=", "eq": "=", "ge": ">=", "gt": ">"}
+        if score_op == "null":
+            sql += " AND match_score IS NULL"
+        elif score_op in op_map and score_value is not None:
+            sql += f" AND match_score {op_map[score_op]} ?"
+            params.append(score_value)
+    elif min_score is not None:
+        # Backward compat: legacy min_score param.
         if min_score == -1:
             sql += " AND match_score IS NULL"
         else:

@@ -1,8 +1,18 @@
 """End-to-end UI regression tests for the jobs/companies/digests views."""
+import os
 import re
+import sqlite3
 
 import pytest
 from playwright.sync_api import Page, expect
+
+
+# Path to the SQLite DB the API server is reading from. Tests use this for
+# pre/post snapshots and restoring after destructive bulk-delete cases.
+_DB_PATH = os.environ.get(
+    "JOB_PIPELINE_DB",
+    os.path.join(os.path.dirname(__file__), "..", "..", "data", "jobs.db"),
+)
 
 
 # ---------------------------------------------------------------------
@@ -341,3 +351,156 @@ def test_bulk_action_bar(page: Page, base_url: str):
     bar.locator(".btn-clear").click()
     expect(bar).not_to_have_class(re.compile(r"\bis-active\b"), timeout=2_000)
     assert page.locator("#jobs-body tr.job-row").count() == initial_count
+
+
+# ---------------------------------------------------------------------
+# G. Score comparison filter (<) + select-all + bulk delete workflow
+# ---------------------------------------------------------------------
+
+def _row_scores(page: Page) -> list[int]:
+    raw = page.locator("#jobs-body tr.job-row td.score-cell").all_text_contents()
+    out = []
+    for s in raw:
+        s = (s or "").strip()
+        if s and s != "-":
+            try:
+                out.append(int(s))
+            except ValueError:
+                pass
+    return out
+
+
+def test_score_filter_less_than_with_bulk_delete(page: Page, base_url: str):
+    """The headline workflow:
+       1. Pick a small score bucket (eg. score = 9) so we touch a bounded
+          number of rows.
+       2. Filter via the new operator dropdown to that bucket.
+       3. Verify every visible row matches the operator/value combo.
+       4. Select all → bulk delete (double-click confirm).
+       5. Verify the affected ids are now soft-deleted in the DB
+          (status=rejected, reject_reason=user_deleted) and the list re-
+          renders empty under the same filter.
+       6. Restore the rows we touched so the test is idempotent.
+
+       Skips cleanly if there's no score data to exercise."""
+    # Pick a target score: small bucket of accepted+visible rows
+    conn = sqlite3.connect(_DB_PATH)
+    try:
+        target_score = None
+        for candidate in (9, 8, 7, 6):
+            n = conn.execute(
+                "SELECT COUNT(*) FROM jobs "
+                "WHERE match_score = ? AND fetched_at > datetime('now','-365 days') "
+                "AND (reject_reason IS NULL OR reject_reason != 'user_deleted') "
+                "AND status = 'accepted'",
+                (candidate,),
+            ).fetchone()[0]
+            if 1 <= n <= 60:
+                target_score = candidate
+                break
+        if target_score is None:
+            pytest.skip("no score bucket with 1–60 accepted+visible rows to safely exercise")
+    finally:
+        conn.close()
+
+    # Open at all-time so 365-day window matches the API
+    page.goto(base_url + "/?", wait_until="domcontentloaded")
+    page.wait_for_selector("#jobs-body tr.job-row", timeout=10_000)
+    page.select_option("#filter-days", "365")
+    page.wait_for_selector("#jobs-body tr.job-row", timeout=10_000)
+
+    # Drive the new score filter: op = '=' (eq) + value = target_score
+    page.select_option("#filter-score-op", "eq")
+    page.select_option("#filter-score-value", str(target_score))
+    # Wait for re-fetch to settle: every visible score matches target_score
+    page.wait_for_function(
+        "(target) => { "
+        " const cells = Array.from(document.querySelectorAll('#jobs-body tr.job-row td.score-cell')); "
+        " return cells.length > 0 && cells.every(td => parseInt(td.textContent.trim()) === target); "
+        "}",
+        arg=target_score, timeout=5_000,
+    )
+
+    # All visible rows must match the filter
+    scores = _row_scores(page)
+    assert scores, "score filter returned 0 rows — bucket changed mid-test?"
+    assert all(s == target_score for s in scores), (
+        f"filter '= {target_score}' returned non-matching scores: {scores}"
+    )
+
+    # URL state was persisted
+    url = page.url
+    assert "score_op=eq" in url and f"score_value={target_score}" in url, (
+        f"score filter did not write to URL: {url}"
+    )
+
+    # Capture original (id, status, reject_reason) for every visible row so we
+    # can restore them after the destructive bulk delete.
+    visible_ids = page.evaluate(
+        "() => Array.from(document.querySelectorAll('#jobs-body tr.job-row'))"
+        ".map(tr => parseInt(tr.id.replace('row-', ''), 10))"
+    )
+    assert len(visible_ids) >= 1
+    conn = sqlite3.connect(_DB_PATH)
+    placeholders = ",".join("?" * len(visible_ids))
+    pre_state = conn.execute(
+        f"SELECT id, status, reject_reason FROM jobs WHERE id IN ({placeholders})",
+        visible_ids,
+    ).fetchall()
+    conn.close()
+    assert len(pre_state) == len(visible_ids)
+    pre_map = {row[0]: (row[1], row[2]) for row in pre_state}
+
+    try:
+        # Select all visible
+        page.locator("#select-all").check()
+        # All row checkboxes should be checked
+        assert page.evaluate(
+            "() => Array.from(document.querySelectorAll('.job-cb')).every(cb => cb.checked)"
+        ), "select-all didn't propagate to row checkboxes"
+
+        # Bulk action bar should show the right count
+        bar = page.locator("#bulk-bar")
+        expect(bar).to_have_class(re.compile(r"\bis-active\b"), timeout=2_000)
+        n_selected = int(page.locator("#bulk-count-num").inner_text())
+        assert n_selected == len(visible_ids), (
+            f"bulk-count {n_selected} != visible rows {len(visible_ids)}"
+        )
+
+        # Double-click DELETE: first click arms, second click executes
+        delete_btn = bar.locator(".btn-delete")
+        delete_btn.click()
+        expect(delete_btn).to_have_class(re.compile(r"\bconfirm\b"), timeout=2_000)
+        delete_btn.click()
+
+        # Wait for the list to drain under the same filter (rows that match
+        # `match_score = target` AND aren't user_deleted)
+        page.wait_for_function(
+            "() => document.querySelectorAll('#jobs-body tr.job-row').length === 0",
+            timeout=8_000,
+        )
+        # Bar should hide once selection is cleared
+        expect(bar).not_to_have_class(re.compile(r"\bis-active\b"), timeout=3_000)
+
+        # DB: those ids should now be rejected/user_deleted
+        conn = sqlite3.connect(_DB_PATH)
+        post_state = conn.execute(
+            f"SELECT id, status, reject_reason FROM jobs WHERE id IN ({placeholders})",
+            visible_ids,
+        ).fetchall()
+        conn.close()
+        for jid, status, reason in post_state:
+            assert status == "rejected" and reason == "user_deleted", (
+                f"job {jid} not soft-deleted: status={status}, reason={reason}"
+            )
+    finally:
+        # Restore the rows so the suite is idempotent — even if any assertion
+        # above failed.
+        conn = sqlite3.connect(_DB_PATH)
+        for jid, (orig_status, orig_reason) in pre_map.items():
+            conn.execute(
+                "UPDATE jobs SET status = ?, reject_reason = ? WHERE id = ?",
+                (orig_status, orig_reason, jid),
+            )
+        conn.commit()
+        conn.close()
