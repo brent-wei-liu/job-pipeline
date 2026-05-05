@@ -152,6 +152,65 @@
     color: #444;
   }
 
+  /* Mobile-only "SELECT ALL" pill — desktop has it in the table thead,
+     but the thead is `display:none` on mobile, so we surface it here. */
+  .mobile-select-bar { display: none; }
+  .mobile-select-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 44px;
+    padding: 0 16px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--cyan);
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 700;
+    font-size: 0.72em;
+    letter-spacing: 0.16em;
+    cursor: pointer;
+    transition: border-color 120ms, background 120ms, box-shadow 120ms;
+  }
+  .mobile-select-btn:active { transform: translateY(1px); }
+  .mobile-select-btn:hover {
+    border-color: var(--cyan);
+    background: rgba(0,255,242,0.06);
+  }
+  .mobile-select-btn .check-box {
+    width: 16px; height: 16px;
+    border: 1.5px solid var(--cyan);
+    background: transparent;
+    position: relative;
+    flex-shrink: 0;
+  }
+  .mobile-select-btn.is-on {
+    border-color: var(--cyan);
+    background: rgba(0,255,242,0.08);
+    box-shadow: 0 0 12px rgba(0,255,242,0.25), inset 0 0 6px rgba(0,255,242,0.15);
+  }
+  .mobile-select-btn.is-on .check-box {
+    background: var(--cyan);
+  }
+  .mobile-select-btn.is-on .check-box::after {
+    content: '';
+    position: absolute;
+    left: 4px; top: 0px;
+    width: 5px; height: 10px;
+    border-right: 2px solid var(--bg);
+    border-bottom: 2px solid var(--bg);
+    transform: rotate(45deg);
+  }
+  .mobile-select-btn.is-indeterminate .check-box {
+    background: rgba(0,255,242,0.35);
+  }
+  .mobile-select-btn.is-indeterminate .check-box::after {
+    content: '';
+    position: absolute;
+    left: 2px; top: 6px;
+    width: 10px; height: 2px;
+    background: var(--bg);
+  }
+
   /* Score filter group — operator + value behind a labeled hairline frame */
   .score-filter {
     display: inline-flex;
@@ -718,6 +777,14 @@
     .table-wrap thead { display: none; }
     .table-wrap tbody { display: block; }
 
+    /* Surface select-all on mobile (thead is hidden) */
+    .mobile-select-bar {
+      display: flex;
+      justify-content: flex-start;
+      margin-bottom: 12px;
+    }
+    .mobile-select-btn { width: 100%; justify-content: center; }
+
     /* Job row → CSS Grid: 5 columns, 2 rows */
     /* col1=CB(28px) col2=★(40px) col3=COMPANY+POSITION(flex) col4=SCORE(52px) col5=ACTIONS(90px) */
     .job-row {
@@ -943,6 +1010,13 @@
           <option value="10">10</option>
         </select>
       </span>
+    </div>
+
+    <div class="mobile-select-bar" role="toolbar" aria-label="Bulk selection">
+      <button type="button" id="select-all-mobile" class="mobile-select-btn" onclick="toggleSelectAllMobile()">
+        <span class="check-box" aria-hidden="true"></span>
+        <span class="check-label">SELECT ALL</span>
+      </button>
     </div>
 
     <div class="table-wrap">
@@ -1828,15 +1902,47 @@ function toggleSelectAll(checked) {
     document.getElementById('row-' + id)?.classList.toggle('row-selected', checked);
   });
   updateBulkBar();
+  updateSelectAllCb();
+}
+
+function toggleSelectAllMobile() {
+  // Treat the mobile button as a toggle: any selection → deselect all,
+  // none selected → select all visible.
+  const cbs = [...document.querySelectorAll('.job-cb')];
+  if (!cbs.length) return;
+  const allChecked = cbs.every(c => c.checked);
+  toggleSelectAll(!allChecked);
 }
 
 function updateSelectAllCb() {
   const cbs = [...document.querySelectorAll('.job-cb')];
   const sel = document.getElementById('select-all');
-  if (!sel || !cbs.length) return;
+  const mobileBtn = document.getElementById('select-all-mobile');
+  if (!cbs.length) {
+    if (sel) { sel.checked = false; sel.indeterminate = false; }
+    if (mobileBtn) {
+      mobileBtn.classList.remove('is-on', 'is-indeterminate');
+      mobileBtn.querySelector('.check-label').textContent = 'SELECT ALL';
+      mobileBtn.setAttribute('aria-pressed', 'false');
+    }
+    return;
+  }
   const nChecked = cbs.filter(c => c.checked).length;
-  sel.checked = nChecked === cbs.length;
-  sel.indeterminate = nChecked > 0 && nChecked < cbs.length;
+  if (sel) {
+    sel.checked = nChecked === cbs.length;
+    sel.indeterminate = nChecked > 0 && nChecked < cbs.length;
+  }
+  if (mobileBtn) {
+    const allOn = nChecked === cbs.length;
+    const partial = nChecked > 0 && nChecked < cbs.length;
+    mobileBtn.classList.toggle('is-on', allOn);
+    mobileBtn.classList.toggle('is-indeterminate', partial);
+    const label = mobileBtn.querySelector('.check-label');
+    if (allOn) label.textContent = 'DESELECT ALL';
+    else if (partial) label.textContent = `SELECT ALL (${nChecked})`;
+    else label.textContent = 'SELECT ALL';
+    mobileBtn.setAttribute('aria-pressed', allOn ? 'true' : 'false');
+  }
 }
 
 function updateBulkBar() {
@@ -1881,9 +1987,8 @@ function bulkClearSelection() {
     if (cb) cb.checked = false;
   });
   selectedIds.clear();
-  const sel = document.getElementById('select-all');
-  if (sel) { sel.checked = false; sel.indeterminate = false; }
   updateBulkBar();
+  updateSelectAllCb();
 }
 
 async function bulkDeleteExec() {

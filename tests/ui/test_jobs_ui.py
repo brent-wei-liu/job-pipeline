@@ -504,3 +504,67 @@ def test_score_filter_less_than_with_bulk_delete(page: Page, base_url: str):
             )
         conn.commit()
         conn.close()
+
+
+# ---------------------------------------------------------------------
+# H. Mobile viewport: select-all is visible & functional
+# ---------------------------------------------------------------------
+
+def test_mobile_select_all_visible(page: Page, base_url: str):
+    """At an iPhone 12-ish viewport (375x812) the desktop thead is
+    `display:none`, so the only place to find a select-all control is the
+    new `.mobile-select-bar`. Verify:
+      - The mobile button is rendered, visible, inside the viewport
+      - Hit target ≥44px tall
+      - Clicking it selects every visible row, opens the bulk action bar
+        with the right count, and flips the button label to DESELECT ALL
+      - Clicking again deselects everything and closes the bar."""
+    page.set_viewport_size({"width": 375, "height": 812})
+    page.goto(base_url, wait_until="domcontentloaded")
+    page.wait_for_selector("#jobs-body tr.job-row", timeout=10_000)
+
+    rows = page.locator("#jobs-body tr.job-row")
+    if rows.count() < 2:
+        pytest.skip("need at least 2 visible job rows")
+
+    btn = page.locator("#select-all-mobile")
+    expect(btn).to_be_visible(timeout=2_000)
+
+    box = btn.bounding_box()
+    assert box is not None, "mobile select-all button has no bounding box"
+    assert box["height"] >= 44, (
+        f"mobile select-all height={box['height']}px — needs ≥44px touch target"
+    )
+    # Inside the viewport (no scrolling needed)
+    viewport_h = page.evaluate("() => window.innerHeight")
+    assert 0 <= box["y"] <= viewport_h - box["height"], (
+        f"mobile select-all y={box['y']} outside viewport ({viewport_h}px tall)"
+    )
+
+    # The desktop thead checkbox should NOT be visible at this width
+    expect(page.locator("#select-all")).to_be_hidden()
+
+    # Click → all visible rows selected, bar appears, label flips
+    label = btn.locator(".check-label")
+    expect(label).to_have_text("SELECT ALL")
+    btn.click()
+    expect(btn).to_have_class(re.compile(r"\bis-on\b"), timeout=2_000)
+    expect(label).to_have_text("DESELECT ALL")
+    visible_count = rows.count()
+    bar = page.locator("#bulk-bar")
+    expect(bar).to_have_class(re.compile(r"\bis-active\b"), timeout=2_000)
+    n = int(page.locator("#bulk-count-num").inner_text())
+    assert n == visible_count, f"bulk count {n} != visible rows {visible_count}"
+    # Every per-row checkbox should be checked
+    assert page.evaluate(
+        "() => Array.from(document.querySelectorAll('.job-cb')).every(cb => cb.checked)"
+    ), "mobile select-all click did not propagate to row checkboxes"
+
+    # Click again → deselect, bar disappears, label resets
+    btn.click()
+    expect(btn).not_to_have_class(re.compile(r"\bis-on\b"), timeout=2_000)
+    expect(label).to_have_text("SELECT ALL")
+    expect(bar).not_to_have_class(re.compile(r"\bis-active\b"), timeout=2_000)
+    assert page.evaluate(
+        "() => Array.from(document.querySelectorAll('.job-cb')).every(cb => !cb.checked)"
+    )
