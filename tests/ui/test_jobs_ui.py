@@ -734,3 +734,80 @@ def test_user_deleted_filter_shows_trash(page: Page, base_url: str):
         "(ids) => !ids.some(id => document.getElementById('row-' + id))",
         arg=visible_ids, timeout=5_000,
     )
+
+
+# ---------------------------------------------------------------------
+# K. LOAD MORE then TOP SCORE — sort applies to all loaded pages,
+#    toggle off keeps all pages in API order
+# ---------------------------------------------------------------------
+
+def test_load_more_then_top_score_sort(page: Page, base_url: str):
+    """Two regressions to lock down:
+      1. Click TOP SCORE first (sorts visible 100 by score desc), then click
+         LOAD MORE. The newly appended page must end up sorted into the same
+         desc order — not pasted on the bottom in API order.
+      2. After LOAD MORE merges in, clicking TOP SCORE again must restore
+         all 200 rows in API order — NOT shrink the list back to 100 (which
+         was the bug: originalJobsSnapshot only captured the first page).
+    """
+    page.goto(base_url, wait_until="domcontentloaded")
+    page.wait_for_selector("#jobs-body tr.job-row", timeout=10_000)
+    page.select_option("#filter-days", "365")
+    page.wait_for_function(
+        "() => document.querySelectorAll('#jobs-body tr.job-row').length === 100",
+        timeout=8_000,
+    )
+    if not page.locator("#load-more-bar").is_visible():
+        pytest.skip("LOAD MORE not shown — fewer than 100 jobs match the filter")
+
+    # Click TOP SCORE first
+    page.click("#fab-score")
+    expect(page.locator("#fab-score")).to_have_class(re.compile(r"\bactive\b"), timeout=2_000)
+    pre_load_more = _score_column_values(page)
+    assert pre_load_more == sorted(pre_load_more, reverse=True), (
+        f"first sort wrong: {pre_load_more[:10]}..."
+    )
+    assert len(pre_load_more) == 100
+
+    # Click LOAD MORE — newly fetched page must be re-sorted into the existing
+    # desc order, not pasted at the end in API order.
+    page.locator("#load-more-bar button").click()
+    page.wait_for_function(
+        "() => document.querySelectorAll('#jobs-body tr.job-row').length > 100",
+        timeout=8_000,
+    )
+    after = page.locator("#jobs-body tr.job-row").count()
+    assert after >= 200, f"LOAD MORE should have brought ≥200 rows, got {after}"
+    expect(page.locator("#fab-score")).to_have_class(re.compile(r"\bactive\b"))
+    merged_scores = _score_column_values(page)
+    assert merged_scores == sorted(merged_scores, reverse=True), (
+        "LOAD MORE while TOP SCORE was active broke the sort: "
+        f"first 10={merged_scores[:10]} last 10={merged_scores[-10:]}"
+    )
+    # JS state should reflect 200 rows still under the sort
+    js_state = page.evaluate(
+        "({len: currentJobs.length, sorted: scoreSorted, "
+        " snap: originalJobsSnapshot ? originalJobsSnapshot.length : null})"
+    )
+    assert js_state["len"] == after
+    assert js_state["sorted"] is True
+    assert js_state["snap"] == after, (
+        f"originalJobsSnapshot length {js_state['snap']} != currentJobs {after} "
+        "— toggle off would lose appended rows"
+    )
+
+    # Click TOP SCORE again — must keep 200 rows AND restore API order
+    page.click("#fab-score")
+    expect(page.locator("#fab-score")).not_to_have_class(re.compile(r"\bactive\b"), timeout=2_000)
+    after_toggle_off = page.locator("#jobs-body tr.job-row").count()
+    assert after_toggle_off == after, (
+        f"toggling TOP SCORE off shrank the list: {after} -> {after_toggle_off} "
+        "(originalJobsSnapshot was missing the appended page)"
+    )
+    restored = _score_column_values(page)
+    # API order is fetched_at desc, not score desc — so the score column is
+    # almost certainly NOT in desc order (and nothing here forces a specific
+    # value sequence). Just assert it's not the post-sort sequence.
+    assert restored != merged_scores, (
+        "toggle off produced the sorted sequence — sort state likely got stuck"
+    )

@@ -1282,6 +1282,15 @@ function renderJobs(jobs, append = false, fromServer = true) {
     const fab = document.getElementById('fab-score');
     if (fab) fab.classList.remove('active');
   }
+  // LOAD MORE while sort is active: extend the un-sorted snapshot (so toggle
+  // off later restores ALL pages in API order) and re-render the full list
+  // in score order — overrides the simple `insertAdjacentHTML` append below.
+  if (append && fromServer && scoreSorted) {
+    if (originalJobsSnapshot) originalJobsSnapshot.push(...jobs);
+    currentJobs.sort((a, b) => (b.match_score ?? -1) - (a.match_score ?? -1));
+    renderJobs(currentJobs, /*append*/ false, /*fromServer*/ false);
+    return;
+  }
   const tbody = document.getElementById('jobs-body');
   const html = jobs.map(j => `
     <tr class="job-row" id="row-${j.id}">
