@@ -11,6 +11,11 @@ def get_conn():
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
+    # 5s wait for the write lock instead of failing immediately with
+    # SQLITE_BUSY. Without this, an always-on api.py + a concurrent
+    # fetcher/scorer/digest writer can corrupt the WAL over time. See
+    # ai-leaders-digest for the prior-art incident.
+    conn.execute("PRAGMA busy_timeout=5000")
     _init_tables(conn)
     return conn
 
