@@ -115,6 +115,15 @@ def _init_tables(conn):
     if "linkedin_company_id" not in wl_cols:
         conn.execute("ALTER TABLE watchlist ADD COLUMN linkedin_company_id INTEGER DEFAULT NULL")
         conn.commit()
+    # Migration: read/unread tracking on digest summaries
+    s_cols = {r[1] for r in conn.execute("PRAGMA table_info(summaries)").fetchall()}
+    for col, typedef in [
+        ("is_read", "INTEGER NOT NULL DEFAULT 0"),
+        ("read_at", "TEXT DEFAULT NULL"),
+    ]:
+        if col not in s_cols:
+            conn.execute(f"ALTER TABLE summaries ADD COLUMN {col} {typedef}")
+    conn.commit()
     _seed_watchlist(conn)
 
 

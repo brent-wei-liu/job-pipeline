@@ -533,6 +533,60 @@
 
   .digest-header:hover, .digest-header:active { background: rgba(0,255,242,0.04); }
 
+  /* Read / unread visual: unread carries a cyan glow dot before the date
+     and a yellow NEW pill; read cards drop the dot, fade the title down
+     to dim text, and lower the whole card's opacity (rises on hover).
+     Fits the green-screen terminal aesthetic. */
+  .digest-unread-dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    margin-right: 10px;
+    background: radial-gradient(circle at 35% 30%, #b9fff8, var(--cyan) 55%, transparent 75%);
+    box-shadow: 0 0 8px rgba(0, 255, 242, 0.7), 0 0 16px rgba(0, 255, 242, 0.3);
+    opacity: 0;
+    transition: opacity 200ms ease;
+  }
+  .digest-card.is-unread .digest-unread-dot { opacity: 1; }
+  .digest-card.is-read { opacity: 0.78; }
+  .digest-card.is-read:hover { opacity: 1; }
+  .digest-card.is-read .digest-date { color: var(--text-dim, #6a8); font-weight: 500; }
+  .digest-unread-label {
+    display: inline-block;
+    margin-left: 12px;
+    padding: 1px 8px;
+    border: 1px solid var(--amber, #ffc94a);
+    color: var(--amber, #ffc94a);
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.62em;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    background: rgba(255, 201, 74, 0.06);
+    vertical-align: middle;
+  }
+  .digest-action-row {
+    display: flex;
+    justify-content: flex-end;
+    padding: 8px 20px 0;
+  }
+  .digest-read-toggle {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--cyan);
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.62em;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    padding: 5px 12px;
+    cursor: pointer;
+    transition: border-color 160ms, color 160ms, background 160ms;
+  }
+  .digest-read-toggle:hover {
+    border-color: var(--cyan);
+    color: #fff;
+    background: rgba(0, 255, 242, 0.08);
+  }
+
   .digest-date {
     color: var(--cyan);
     font-family: 'Orbitron', sans-serif;
@@ -1580,15 +1634,22 @@ async function loadDigests() {
   }
 
   document.getElementById('digests-content').innerHTML = data.summaries.map(s => `
-    <div class="digest-card" id="digest-${s.id}">
+    <div class="digest-card ${s.is_read ? 'is-read' : 'is-unread'}" id="digest-${s.id}" data-id="${s.id}" data-is-read="${s.is_read ? '1' : '0'}">
       <div class="digest-header" onclick="toggleDigest(${s.id})">
+        <span class="digest-unread-dot" aria-hidden="true"></span>
         <span class="digest-date">${formatDate(s.date)}</span>
         <span class="digest-meta" style="color:#666;font-size:0.8em;margin-left:12px">
           ${s.content.length} chars
         </span>
+        ${s.is_read ? '' : '<span class="digest-unread-label">NEW</span>'}
         <span class="digest-toggle" id="toggle-${s.id}" style="float:right;color:var(--cyan)">[+]</span>
       </div>
       <div class="digest-body" id="body-${s.id}" style="display:none">
+        <div class="digest-action-row">
+          <button class="digest-read-toggle" type="button" onclick="toggleDigestRead(${s.id});event.stopPropagation()">
+            ${s.is_read ? 'MARK UNREAD' : 'MARK UNREAD'}
+          </button>
+        </div>
         <div class="digest-content">${marked.parse(s.content)}</div>
       </div>
     </div>
@@ -1598,13 +1659,46 @@ async function loadDigests() {
 function toggleDigest(id) {
   const body = document.getElementById('body-' + id);
   const toggle = document.getElementById('toggle-' + id);
+  const card = document.getElementById('digest-' + id);
   if (body.style.display === 'none') {
     body.style.display = 'block';
     toggle.textContent = '[-]';
+    // Auto-mark read when the accordion expands. If already read, no-op.
+    if (card && card.dataset.isRead !== '1') {
+      markDigestReadState(id, true);
+    }
   } else {
     body.style.display = 'none';
     toggle.textContent = '[+]';
   }
+}
+
+function toggleDigestRead(id) {
+  const card = document.getElementById('digest-' + id);
+  if (!card) return;
+  const isRead = card.dataset.isRead === '1';
+  markDigestReadState(id, !isRead);
+}
+
+async function markDigestReadState(id, isRead) {
+  // Optimistic UI: flip card class + button label first, then POST.
+  const card = document.getElementById('digest-' + id);
+  if (card) {
+    card.classList.toggle('is-read', isRead);
+    card.classList.toggle('is-unread', !isRead);
+    card.dataset.isRead = isRead ? '1' : '0';
+    const label = card.querySelector('.digest-unread-label');
+    if (isRead && label) label.remove();
+    else if (!isRead && !label) {
+      const meta = card.querySelector('.digest-meta');
+      if (meta) meta.insertAdjacentHTML('afterend', '<span class="digest-unread-label">NEW</span>');
+    }
+    const btn = card.querySelector('.digest-read-toggle');
+    if (btn) btn.textContent = isRead ? 'MARK UNREAD' : 'MARK READ';
+  }
+  try {
+    await fetch(`/api/summaries/${id}/${isRead ? 'read' : 'unread'}`, { method: 'POST' });
+  } catch (e) { /* swallow; reload will resync */ }
 }
 
 // ── Companies ──────────────────────────────────────────────────────────

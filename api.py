@@ -284,10 +284,46 @@ def get_stats(days: int = Query(30, ge=1, le=365)):
 def list_summaries(limit: int = Query(30, ge=1, le=100)):
     conn = get_conn()
     rows = conn.execute(
-        "SELECT * FROM summaries ORDER BY date DESC LIMIT ?", (limit,)
+        """SELECT id, date, content, created_at, is_read, read_at
+           FROM summaries ORDER BY date DESC LIMIT ?""",
+        (limit,),
     ).fetchall()
     conn.close()
     return {"summaries": [dict(r) for r in rows], "total": len(rows)}
+
+
+@app.post("/api/summaries/{summary_id}/read")
+def mark_summary_read(summary_id: int):
+    conn = get_conn()
+    try:
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).isoformat()
+        cur = conn.execute(
+            "UPDATE summaries SET is_read = 1, read_at = ? WHERE id = ?",
+            (now, summary_id),
+        )
+        conn.commit()
+        if cur.rowcount == 0:
+            raise HTTPException(404, "summary not found")
+        return {"ok": True, "is_read": True, "read_at": now}
+    finally:
+        conn.close()
+
+
+@app.post("/api/summaries/{summary_id}/unread")
+def mark_summary_unread(summary_id: int):
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            "UPDATE summaries SET is_read = 0, read_at = NULL WHERE id = ?",
+            (summary_id,),
+        )
+        conn.commit()
+        if cur.rowcount == 0:
+            raise HTTPException(404, "summary not found")
+        return {"ok": True, "is_read": False}
+    finally:
+        conn.close()
 
 
 # ── Companies API ────────────────────────────────────────────────────────────

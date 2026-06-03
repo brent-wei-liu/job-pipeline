@@ -811,3 +811,101 @@ def test_load_more_then_top_score_sort(page: Page, base_url: str):
     assert restored != merged_scores, (
         "toggle off produced the sorted sequence — sort state likely got stuck"
     )
+
+
+# ---------------------------------------------------------------------
+# L. Digest read/unread — expanding accordion auto-marks read; toggle works
+# ---------------------------------------------------------------------
+
+def test_digest_mark_read_persists(page: Page, base_url: str):
+    """Expanding a digest accordion should auto-mark it read (POST
+    /api/summaries/{id}/read). After reload, the same card must render
+    with .is-read."""
+    _open_jobs(page, base_url)
+    page.locator(".nav button", has_text="DIGESTS").click()
+    page.wait_for_function(
+        "() => getComputedStyle(document.getElementById('tab-digests')).display !== 'none'",
+        timeout=3_000,
+    )
+    cards = page.locator(".digest-card")
+    page.wait_for_selector(".digest-card", timeout=5_000)
+    if cards.count() == 0:
+        pytest.skip("no digests in DB")
+
+    first = cards.first
+    digest_id = first.get_attribute("id").replace("digest-", "")
+    # Force unread starting state
+    page.evaluate(
+        "(id) => fetch('/api/summaries/' + id + '/unread', {method:'POST'})",
+        arg=digest_id,
+    )
+    page.reload(wait_until="domcontentloaded")
+    page.locator(".nav button", has_text="DIGESTS").click()
+    page.wait_for_selector(f"#digest-{digest_id}", timeout=5_000)
+    card = page.locator(f"#digest-{digest_id}")
+    expect(card).to_have_class(re.compile(r"\bis-unread\b"), timeout=3_000)
+
+    # Click the header → expand → auto-mark read
+    card.locator(".digest-header").click()
+    page.wait_for_function(
+        "(id) => document.getElementById('digest-' + id)?.dataset.isRead === '1'",
+        arg=digest_id, timeout=3_000,
+    )
+    expect(card).to_have_class(re.compile(r"\bis-read\b"), timeout=2_000)
+
+    # Reload — persists
+    page.reload(wait_until="domcontentloaded")
+    page.locator(".nav button", has_text="DIGESTS").click()
+    page.wait_for_selector(f"#digest-{digest_id}", timeout=5_000)
+    expect(page.locator(f"#digest-{digest_id}")).to_have_class(
+        re.compile(r"\bis-read\b"), timeout=3_000
+    )
+
+
+def test_digest_unread_toggle(page: Page, base_url: str):
+    """The 'MARK UNREAD/READ' button inside the expanded body reverses
+    the auto-mark-read. Both directions must flip the card class + API."""
+    _open_jobs(page, base_url)
+    page.locator(".nav button", has_text="DIGESTS").click()
+    page.wait_for_function(
+        "() => getComputedStyle(document.getElementById('tab-digests')).display !== 'none'",
+        timeout=3_000,
+    )
+    page.wait_for_selector(".digest-card", timeout=5_000)
+    cards = page.locator(".digest-card")
+    if cards.count() == 0:
+        pytest.skip("no digests in DB")
+
+    digest_id = cards.first.get_attribute("id").replace("digest-", "")
+    page.evaluate(
+        "(id) => fetch('/api/summaries/' + id + '/unread', {method:'POST'})",
+        arg=digest_id,
+    )
+    page.reload(wait_until="domcontentloaded")
+    page.locator(".nav button", has_text="DIGESTS").click()
+    page.wait_for_selector(f"#digest-{digest_id}", timeout=5_000)
+
+    # Expand → auto-read
+    page.locator(f"#digest-{digest_id} .digest-header").click()
+    page.wait_for_function(
+        "(id) => document.getElementById('digest-' + id)?.dataset.isRead === '1'",
+        arg=digest_id, timeout=3_000,
+    )
+
+    # Click MARK UNREAD in body → flips back
+    btn = page.locator(f"#digest-{digest_id} .digest-read-toggle")
+    expect(btn).to_be_visible()
+    btn.click()
+    page.wait_for_function(
+        "(id) => document.getElementById('digest-' + id)?.dataset.isRead === '0'",
+        arg=digest_id, timeout=3_000,
+    )
+    expect(page.locator(f"#digest-{digest_id}")).to_have_class(
+        re.compile(r"\bis-unread\b"), timeout=2_000
+    )
+
+    final = page.evaluate(
+        "async (id) => (await (await fetch('/api/summaries?limit=50')).json()).summaries.find(s => s.id == id).is_read",
+        arg=digest_id,
+    )
+    assert final == 0
