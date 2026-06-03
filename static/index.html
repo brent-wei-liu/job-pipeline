@@ -587,6 +587,44 @@
     background: rgba(0, 255, 242, 0.08);
   }
 
+  /* Back-to-top: cyan-bordered amber arrow, fixed bottom-right. Only
+     present on the digests tab; fades in past 300px of window scroll. */
+  .digest-top-btn {
+    position: fixed;
+    right: 24px;
+    bottom: 28px;
+    width: 44px; height: 44px;
+    border: 1px solid var(--cyan);
+    border-radius: 4px;
+    background: rgba(0, 12, 16, 0.86);
+    color: var(--amber, #ffc94a);
+    font-family: 'Orbitron', sans-serif;
+    font-size: 20px;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    z-index: 220;
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity 220ms ease, transform 220ms ease, box-shadow 220ms ease;
+    pointer-events: none;
+    box-shadow: 0 0 12px rgba(0, 255, 242, 0.45), inset 0 0 0 1px rgba(0, 255, 242, 0.15);
+  }
+  .digest-top-btn.visible {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+  }
+  .digest-top-btn:hover {
+    box-shadow: 0 0 22px rgba(0, 255, 242, 0.7), inset 0 0 0 1px rgba(0, 255, 242, 0.3);
+    color: #fff;
+    transform: translateY(-2px);
+  }
+  .digest-top-btn:active { transform: translateY(0); }
+  .digest-top-btn[hidden] { display: none !important; }
+
   .digest-date {
     color: var(--cyan);
     font-family: 'Orbitron', sans-serif;
@@ -1128,6 +1166,10 @@
     <div id="digests-content"></div>
   </div>
 
+  <!-- Back-to-top: shown on digests tab only after the user scrolls
+       past 300px. Fixed position so it survives any reflow. -->
+  <button type="button" class="digest-top-btn" id="digest-top-btn" aria-label="back to top" hidden>↑</button>
+
   <!-- COMPANIES TAB -->
   <div id="tab-companies" style="display:none">
     <div class="controls">
@@ -1204,11 +1246,34 @@ function switchTab(tab) {
   document.querySelectorAll('.nav button').forEach(b => { if (b.textContent === tabLabels[tab]) b.classList.add('active'); });
   document.getElementById('tab-' + tab).style.display = 'block';
   setFABs(tab);
+  // The back-to-top button is digests-tab-only; gate it here so a tab
+  // switch correctly hides it whether or not the user has scrolled.
+  const topBtn = document.getElementById('digest-top-btn');
+  if (topBtn) {
+    if (tab === 'digests') {
+      topBtn.hidden = false;
+      updateDigestTopBtn();
+    } else {
+      topBtn.classList.remove('visible');
+      topBtn.hidden = true;
+    }
+  }
   if (tab === 'stats') loadStats();
   if (tab === 'runs') loadRuns();
   if (tab === 'digests') loadDigests();
   if (tab === 'companies') loadCompanies();
 }
+
+function updateDigestTopBtn() {
+  const btn = document.getElementById('digest-top-btn');
+  if (!btn || btn.hidden) return;
+  btn.classList.toggle('visible', window.scrollY > 300);
+}
+window.addEventListener('scroll', updateDigestTopBtn, { passive: true });
+document.addEventListener('DOMContentLoaded', () => {
+  const btn = document.getElementById('digest-top-btn');
+  if (btn) btn.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+});
 
 // ── Jobs ───────────────────────────────────────────────────────────────
 function debounceLoad() {

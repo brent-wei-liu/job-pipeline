@@ -909,3 +909,73 @@ def test_digest_unread_toggle(page: Page, base_url: str):
         arg=digest_id,
     )
     assert final == 0
+
+
+# ---------------------------------------------------------------------
+# M. Back-to-top button on digests tab — appears on scroll, returns top
+# ---------------------------------------------------------------------
+
+def test_digest_back_to_top(page: Page, base_url: str):
+    """The digests tab uses inline accordion cards rather than a modal, so
+    scroll happens on window. The back-to-top button is hidden on every
+    other tab and only fades in past 300px of window scroll while the
+    digests tab is active."""
+    _open_jobs(page, base_url)
+    # On the jobs tab the button should be hidden regardless of scroll
+    expect(page.locator("#digest-top-btn")).to_be_hidden()
+
+    page.locator(".nav button", has_text="DIGESTS").click()
+    page.wait_for_function(
+        "() => getComputedStyle(document.getElementById('tab-digests')).display !== 'none'",
+        timeout=3_000,
+    )
+
+    cards = page.locator(".digest-card")
+    page.wait_for_selector(".digest-card", timeout=5_000)
+    if cards.count() == 0:
+        pytest.skip("no digests in DB to test")
+
+    # Expand the first card so we have plenty of scrollable content
+    first = cards.first
+    first_id = first.get_attribute("id").replace("digest-", "")
+    first.locator(".digest-header").click()
+    page.wait_for_function(
+        "(id) => getComputedStyle(document.getElementById('body-' + id)).display !== 'none'",
+        arg=first_id, timeout=3_000,
+    )
+
+    btn = page.locator("#digest-top-btn")
+    # Pre-scroll: button is mounted (not [hidden]) but lacks .visible
+    expect(btn).not_to_have_class(re.compile(r"\bvisible\b"))
+
+    page_h = page.evaluate("document.body.scrollHeight")
+    vp_h = page.evaluate("window.innerHeight")
+    if page_h - vp_h < 400:
+        pytest.skip(f"page too short for back-to-top test ({page_h - vp_h}px scroll)")
+
+    # Scroll past 300
+    page.evaluate("window.scrollTo({top: 600, behavior: 'instant'})")
+    page.wait_for_function(
+        "() => document.getElementById('digest-top-btn').classList.contains('visible')",
+        timeout=2_000,
+    )
+    expect(btn).to_have_class(re.compile(r"\bvisible\b"))
+
+    # Click → smooth scroll to 0
+    btn.click()
+    page.wait_for_function(
+        "() => window.scrollY < 10",
+        timeout=2_000,
+    )
+    page.wait_for_function(
+        "() => !document.getElementById('digest-top-btn').classList.contains('visible')",
+        timeout=2_000,
+    )
+
+    # Switch back to jobs → button should hide (regardless of any scroll)
+    page.locator(".nav button", has_text="JOBS").click()
+    page.wait_for_function(
+        "() => getComputedStyle(document.getElementById('tab-jobs')).display !== 'none'",
+        timeout=3_000,
+    )
+    expect(btn).to_be_hidden()
