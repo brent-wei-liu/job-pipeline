@@ -151,7 +151,7 @@ GET    /api/summaries?limit=30 # 历史 digest 报告（summaries 表）
 | Fetch (LinkedIn) | 10:00 AM 每天 | 本地 crontab | `job_fetch.py` | 抓取 LinkedIn 职位，规则过滤，存入 SQLite |
 | Fetch (Watchlist) | 随 Fetch 手动或按需 | 手动 / crontab | `watchlist_fetch.py` | 抓取 44 家公司招聘页（Greenhouse/Ashby/Lever/Workday/SmartRecruiters） |
 | Score | 10:05 AM 每天 | Claude scheduled task | `job-score` skill | LLM 对 accepted jobs 做简历匹配评分（1-10 分）→ 写入 `jobs.match_score` |
-| Digest | 每日 Score 后 | Claude scheduled task | `job-digest` skill | 生成中文日报 → 存 `summaries` 表 → Gmail 发送 |
+| Digest | 每日 Score 后 | Claude scheduled task | `job-digest` skill | 生成中文日报 → 存 `summaries` 表 → `email_sender.py` 经 Gmail SMTP 发送 |
 | Company Analyze | 8:00 AM 每周日 | Claude scheduled task | `company-analyze` skill | WebSearch 调研 + 五维评分 → 写入 `company_analysis` 表 |
 
 ### Skills 说明
@@ -160,7 +160,7 @@ GET    /api/summaries?limit=30 # 历史 digest 报告（summaries 表）
 |---|---|---|
 | `job-score` | 评分最近 1 天的未打分 accepted jobs | `backfill_scores.py --json` + `job_digest.py save-score` |
 | `job-backfill` | 批量补评历史全量未打分 jobs | 同上，处理全部积压 |
-| `job-digest` | 生成中文日报并发邮件 | `job_digest.py query 1` + Gmail API |
+| `job-digest` | 生成中文日报并发邮件 | `job_digest.py query 1` + `email_sender.py` |
 | `company-analyze` | WebSearch 研究公司，五维评分 | `company_analyze.py --list-pending / --save` |
 
 手动触发任意 skill：在 Claude Code sidebar 的 "Scheduled" 面板点 "Run now"，或直接在对话里说 "run job-score skill"。
@@ -201,7 +201,7 @@ pip3 install fastapi uvicorn requests
 
 1. Copy `data/resume.md.example` to `data/resume.md` and fill in your own resume — match scoring reads from there.
 2. Copy `data/watchlist.example.json` to `data/watchlist.local.json` and edit to add your target companies. The first time `db.py` initializes the DB, it seeds the `watchlist` table from this file (preferring `local.json`, falling back to `example.json`).
-3. Digest is delivered as a Gmail draft via the Gmail MCP. Set `DIGEST_RECIPIENT` in `.env` (see `.env.example`) to the recipient address. Open the draft in Gmail to review and send.
+3. Digest is sent by `email_sender.py` through `smtp.gmail.com:587` (STARTTLS) as plain text + rendered HTML. Set `DIGEST_RECIPIENT`, `GMAIL_SMTP_USER` and `GMAIL_APP_PASSWORD` in `.env` (see `.env.example`); the App Password comes from https://myaccount.google.com/apppasswords and requires 2-Step Verification. Preview with `python3 email_sender.py --dry-run`. Each digest date is sent once (logged in `data/email_sent.jsonl`); use `--force` to resend. If sending fails, the skill falls back to a Gmail draft via the Gmail MCP `create_draft` tool when that connector is available.
 4. Run `python3 job_fetch.py --max-accept 12` to seed jobs, then `python3 api.py` for the Web UI.
 
 ## Testing

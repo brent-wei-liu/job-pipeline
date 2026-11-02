@@ -25,7 +25,7 @@
 - name: job-pipeline-digest
   skill: .claude/skills/job-digest
   frequency: daily 11:00 PT
-  description: Generate Chinese digest from scored jobs, save to summaries table, send via email_sender.py.
+  description: Generate Chinese digest from scored jobs, save to summaries table, send via email_sender.py (Gmail SMTP; falls back to a Gmail draft via MCP).
 
 - name: job-pipeline-db-backup
   skill: null

@@ -34,6 +34,10 @@ python3 company_analyze.py --stats
 python3 company_analyze.py --list-pending
 echo '<analysis_json>' | python3 company_analyze.py --save
 
+# Send a saved digest via Gmail SMTP (each date once; --force to resend)
+python3 email_sender.py --dry-run
+python3 email_sender.py --date 2026-01-31
+
 # Install dependencies
 pip3 install fastapi uvicorn requests
 ```
@@ -46,6 +50,7 @@ pip3 install fastapi uvicorn requests
 - **backfill_scores.py** — I/O-only: lists unscored `accepted` jobs as JSON (`--json`), or accepts a JSON array on stdin and writes scores back. No LLM calls — scoring is done by the `job-score` / `job-backfill` skills. Loads resume from `data/resume.md`.
 - **company_analyze.py** — I/O-only: lists companies pending analysis (`--list-pending`), or accepts a JSON array on stdin and writes to `company_analysis` table. No LLM calls — analysis done by `company-analyze` skill.
 - **job_digest.py** — Read-only queries against SQLite, outputs structured JSON for an LLM to format. Subcommands: `query`, `stats`, `save-score`, `save-report`.
+- **email_sender.py** — Sends a saved digest via Gmail SMTP (stdlib only, plain text + HTML). Reads `DIGEST_RECIPIENT` / `GMAIL_SMTP_USER` / `GMAIL_APP_PASSWORD` from `.env`. Logs each sent date to `data/email_sent.jsonl`, and later runs for that date are skipped.
 - **api.py** — FastAPI backend. Key endpoints: `/api/jobs`, `/api/companies`, `/api/stats`, `/api/summaries`, `POST /api/jobs/bulk-delete`.
 - **static/index.html** — Single-file frontend. Retro-CRT aesthetic. Five tabs: Jobs, Stats, Search Runs, Digests, Companies.
 - **data/** — `jobs.db` (WAL), `resume.md` (scoring), `resume_text.txt` (legacy fallback).
@@ -68,7 +73,7 @@ Four Claude Code skills live in `.claude/skills/`. They do the LLM work; Python 
 |---|---|---|---|
 | `job-score` | Daily 10:05 AM PT | Score recent unscored accepted jobs (resume↔JD, 1-10) | `jobs.match_score` etc. |
 | `job-backfill` | On demand | Same as job-score but processes full historical backlog | `jobs.match_score` etc. |
-| `job-digest` | Daily after score | Generate Chinese digest, email to user | `summaries` table + Gmail |
+| `job-digest` | Daily after score | Generate Chinese digest, email to user | `summaries` table + Gmail SMTP (draft fallback) |
 | `company-analyze` | Sunday 8:00 AM PT | WebSearch + 5-dim score for watchlist companies | `company_analysis` table |
 
 To run manually: invoke the skill by name in a Claude Code session, or use the Python I/O scripts directly (see Commands section above).

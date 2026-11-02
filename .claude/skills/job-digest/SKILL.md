@@ -87,88 +87,52 @@ Write the report in Chinese using the **strict template below**. Section heading
 - **不要省略章节**。即使某档没有 jobs（例如 ≥7 分一条没有），也要保留章节标题并写一行"今天无 7+ 高分匹配。"等说明。
 - **`行动建议:` 是终行**，独立成段，不要嵌在洞察 bullets 里。
 
-### Step 3: Save to database
+### Step 3: Save to database (must succeed before Step 4)
 
-Pipe the report into save-summary:
+Write the report to a temp file (heredoc-safe), pipe it into save-summary, then verify the row landed. `save-summary` dates rows in UTC, so use the UTC date throughout:
 
 ```bash
-echo '<report_content>' | python3 job_digest.py save-summary
+DATE=$(date -u +%Y-%m-%d)
+TMP=$(mktemp -t job_digest.XXXXXX.md)
+cat > "$TMP" <<'DIGEST_EOF'
+<report_content>
+DIGEST_EOF
+python3 job_digest.py save-summary "$DATE" < "$TMP"
+NEW_ID=$(sqlite3 data/jobs.db "SELECT id FROM summaries WHERE date='$DATE' ORDER BY id DESC LIMIT 1")
+test -n "$NEW_ID" && echo "saved as summary id=$NEW_ID"
 ```
 
-### Step 4: Create Gmail draft
+**Fallback on failure** (DB locked / corrupted / disk full / verify came back empty): keep the digest on disk and continue to Step 4 in orphan mode, so the user notices the archival gap.
 
-Use the Gmail MCP `create_draft` tool to create (not send) a draft email containing the digest. The user reviews in Gmail and sends manually.
-
-**Convert the digest markdown to HTML before calling `create_draft`** — Gmail's UI does not render markdown, so passing raw markdown shows it as source. Pass BOTH parameters:
-
-- `to`: read `DIGEST_RECIPIENT` from `<project>/.env` (parse `KEY=VALUE` lines, value of `DIGEST_RECIPIENT`). If missing, abort with a clear error.
-- `subject`: `求职日报 YYYY-MM-DD`
-- `body`: the plain markdown text (fallback for non-HTML clients)
-- `htmlBody`: the rendered HTML (used by Gmail web/mobile)
-
-Renderer requirements:
-- Headings (`#` / `##` / `###`) → `<h1>` / `<h2>` / `<h3>`
-- Bullet lists (`- ` or `* `) → `<ul><li>`
-- Bold (`**text**`) → `<strong>`
-- Inline code (`` `x` ``) → `<code>`
-- Links `[text](url)` → `<a href="url">text</a>`
-- Blank lines separate paragraphs (`<p>`)
-- HTML-escape the source first to prevent injection from any tweet/JD content
-
-Wrap the HTML in a minimal shell with inline styles for readability:
-```html
-<!DOCTYPE html><html><body style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;max-width:680px;margin:auto;padding:20px;line-height:1.5;color:#222;">
-  ...rendered content...
-</body></html>
+```bash
+# only if save-summary or the verify above failed
+cp "$TMP" "data/orphan_digest_${DATE}.md"
+ORPHAN=1
 ```
 
-Prefer Python's `markdown` library if available (`python3 -c "import markdown; print(markdown.markdown(open('<file>').read()))"`). Otherwise inline a minimal converter:
+If the orphan file can't be written either, stop and surface the error — do not send a digest that exists nowhere on disk.
 
-```python
-import html, re
-def md_to_html(md):
-    safe = html.escape(md)
-    out, in_list, para = [], False, []
-    bold = re.compile(r'\*\*(.+?)\*\*')
-    code = re.compile(r'`([^`]+?)`')
-    link = re.compile(r'\[([^\]]+)\]\(([^)]+)\)')
-    def inline(s):
-        s = bold.sub(r'<strong>\1</strong>', s)
-        s = code.sub(r'<code>\1</code>', s)
-        s = link.sub(r'<a href="\2">\1</a>', s)
-        return s
-    def flush_para():
-        nonlocal para
-        if para:
-            out.append('<p>' + inline(' '.join(para).strip()) + '</p>')
-            para = []
-    def close_list():
-        nonlocal in_list
-        if in_list: out.append('</ul>'); in_list = False
-    for line in safe.split('\n'):
-        s = line.strip()
-        m = re.match(r'^(#{1,3})\s+(.+)$', s)
-        if m:
-            flush_para(); close_list()
-            lvl = len(m.group(1))
-            out.append(f'<h{lvl}>{inline(m.group(2))}</h{lvl}>')
-        elif s.startswith('- ') or s.startswith('* '):
-            flush_para()
-            if not in_list: out.append('<ul>'); in_list = True
-            out.append(f'<li>{inline(s[2:])}</li>')
-        elif not s:
-            flush_para(); close_list()
-        else:
-            close_list(); para.append(s)
-    flush_para(); close_list()
-    return ('<!DOCTYPE html><html><body style="font-family:-apple-system,'
-            'BlinkMacSystemFont,Segoe UI,sans-serif;max-width:680px;'
-            'margin:auto;padding:20px;line-height:1.5;color:#222;">'
-            + '\n'.join(out) + '</body></html>')
+### Step 4: Send email via SMTP
+
+The sender sends immediately, with no review step. Each digest date goes out once: a repeat run prints `{"sent": false, "skipped": true, ...}` and exits 0 — treat that as delivered, create no draft, and don't pass `--force` unless the user asked for a resend.
+
+```bash
+python3 email_sender.py --date "$DATE"
+# only if Step 3 set ORPHAN=1 (subject gets the [ORPHAN: not in DB] prefix):
+python3 email_sender.py --date "$DATE" --file "data/orphan_digest_${DATE}.md" --orphan
 ```
 
-If the Gmail MCP isn't available, surface that to the user — do not silently fall back to anything else.
+Success prints `{"sent": true, ...}` and exits 0. The sender reads `DIGEST_RECIPIENT`, `GMAIL_SMTP_USER` and `GMAIL_APP_PASSWORD` from `<project>/.env`, uses the subject `求职日报 YYYY-MM-DD`, and renders the markdown to HTML with a plain-text alternative. Use `--dry-run` to render and print headers without connecting.
+
+**Fallback on a non-zero exit** (missing credentials, blocked network, auth failure): keep the error text for Step 5, then create a Gmail draft if the Gmail MCP `create_draft` tool is available. Do not retry the send.
+
+```bash
+python3 email_sender.py --date "$DATE" --dry-run --html-out "$(mktemp -t job_digest.XXXXXX.html)"
+# add --file/--orphan as above; the same renderer output becomes htmlBody
+```
+
+Pass `to` = `DIGEST_RECIPIENT`, `subject` = the Subject line from the dry-run output, `body` = the digest markdown, `htmlBody` = the rendered HTML file's contents. If the Gmail MCP isn't available, report the send failure — do not fail silently.
 
 ### Step 5: Confirm
 
-Report that the digest has been saved to the DB and a Gmail draft has been created (with the draft id if available).
+Report that the digest was saved to the DB (or the orphan file path) and the delivery status: sent via SMTP to `<recipient>` / already sent, skipped / SMTP failed with `<error>`, draft created with id `<id>` / SMTP failed with `<error>`, Gmail MCP unavailable.

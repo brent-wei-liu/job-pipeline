@@ -11,6 +11,8 @@ data/watchlist.local.json
 .fuse_hidden*
 data/.fuse_hidden*
 data/fetch.log
+data/email_sent.jsonl
+data/orphan_digest_*.md
 tmp_report.txt
 daily-report-*.md
 digest_report.md
